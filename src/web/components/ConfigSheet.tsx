@@ -19,7 +19,7 @@ import { PermissionPicker } from "./PermissionPicker.js";
 import { ThinkingPicker } from "./ThinkingPicker.js";
 import { AccountPicker } from "./AccountPicker.js";
 
-function AgentPane({ harnessName, agents, current, disabled, applying, returning, error, onBack, onSelect }: { harnessName: string; agents: NonNullable<ChatState["config"]["agents"]>; current: string | null; disabled: boolean; applying: boolean; returning: boolean; error: string | null; onBack: () => void; onSelect: (id: string) => void }) {
+function AgentPane({ harnessName, agents, current, disabled, applying, returning, error, onBack, onSelect, onDefault }: { harnessName: string; agents: NonNullable<ChatState["config"]["agents"]>; current: string | null; disabled: boolean; applying: boolean; returning: boolean; error: string | null; onBack: () => void; onSelect: (id: string) => void; onDefault: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -41,17 +41,19 @@ function AgentPane({ harnessName, agents, current, disabled, applying, returning
     <div className={`config-agent-pane${returning ? " is-returning" : ""}`} ref={rootRef} onKeyDown={onKey}>
       <button type="button" className="btn btn-ghost config-back" disabled={applying || returning} title={applying ? "Close when saving finishes" : "Back to chat settings"} onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
       <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : `${current === null ? "Harness default. " : ""}Role changes how ${harnessName} approaches the prompt; model and permissions stay separate. Tap a role, or use Arrow keys and Enter.`)}</p>
-      <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled || returning} onSelect={onSelect} />
+      <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled || returning} onSelect={onSelect} onDefault={onDefault} />
     </div>
   );
 }
 
 
 
-export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshModels, onClose }: {
+export function ConfigSheet({ chat, harnesses, onConfig, onDefaultChat, onHandoff, onRefreshModels, onClose }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
   onConfig: (patch: ConfigPatch) => Promise<void>;
+  /** Starts a fresh native chat on the harness default; only supplied when the harness supports this inverse. */
+  onDefaultChat?: () => Promise<void>;
   onHandoff: (harnessId: string) => Promise<void>;
   onRefreshModels: () => Promise<void>;
   onClose: () => void;
@@ -100,6 +102,20 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
       setApplying(false);
     }
   };
+  const useDefault = async () => {
+    if (applying || !onDefaultChat) return;
+    setApplying(true);
+    setConfigError(null);
+    try {
+      await onDefaultChat();
+      onClose();
+    } catch (error) {
+      // The current chat remains authoritative; the pane stays for retry/back.
+      setConfigError(errorText(error).slice(0, 180));
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const back = async () => {
     // Both Back and its Escape route obey the single in-flight owner's lock.
@@ -119,7 +135,7 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
       if (root.isConnected) {
         const current = body.getBoundingClientRect().height;
         const leave = root.animate(
-          [{ opacity: 1, transform: "translateY(0)" }, { opacity: 0.72, transform: "translateY(-8px)" }],
+          [{ opacity: 1, transform: "translateY(0)" }, { opacity: 0, transform: "translateY(-8px)" }],
           { id: "morph:pane", duration: POPUP_LEAVE_MS, easing: getComputedStyle(root).getPropertyValue("--ease-out").trim() || "ease-out", fill: "forwards" },
         );
         // Exit toward Back. Pushing the bottom choice down would clip it through
@@ -154,13 +170,13 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
   return (
     <Dialog title={choosing ? "Primary agent" : "Chat settings"} onClose={onClose} closeLocked={applying} ownerRef={ownerRef} returnFocus={returnFocus} className="config-sheet">
       {agents && choosing ? (
-        <AgentPane harnessName={harnesses.find(h => h.id === chat.harnessId)?.displayName ?? chat.harnessId} agents={agents} current={config.agent ?? null} disabled={!idle || applying} applying={applying} returning={returning} error={configError} onBack={back} onSelect={(agent) => pick({ agent })} />
+        <AgentPane harnessName={harnesses.find(h => h.id === chat.harnessId)?.displayName ?? chat.harnessId} agents={agents} current={config.agent ?? null} disabled={!idle || applying} applying={applying} returning={returning} error={configError} onBack={back} onSelect={(agent) => pick({ agent })} onDefault={useDefault} />
       ) : (
         <>
           {agents ? (
             <div className="config-row" ref={primaryRow}>
               <span className="config-row-label">Primary agent</span>
-              <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle || applying} onOpen={openAgent} onSelect={() => undefined} />
+              <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle || applying} onOpen={openAgent} onSelect={() => undefined} onDefault={onDefaultChat ? useDefault : undefined} />
             </div>
           ) : null}
           {caps.supportsModelSelection ? (

@@ -1003,6 +1003,7 @@ export function App() {
       const body: Record<string, string | boolean> = { harnessId: startHarness, workspaceId: ws.id };
       if (startModel) body.model = startModel;
       if (startThinking) body.thinkingLevel = startThinking;
+      // An empty pick from the creation chip is the harness default: send no agent override.
       if (startAgent) body.agent = startAgent;
       const snapshot = await api<ChatSnapshot>("/api/chats", { body, idempotencyKey: keys.create });
       // A create is never undone by the user going elsewhere while it ran (a tab
@@ -1057,32 +1058,67 @@ export function App() {
   };
 
   /** An immediate new chat (Ctrl+Alt+Enter from a composer): the start screen is the ordinary path, this one skips it. */
-  const newChat = async (target: WorkspaceInfo | null = workspace, { newTab = false }: { newTab?: boolean } = {}) => {
+  const newChat = async (target: WorkspaceInfo | null = workspace, { newTab = false, harness, reportFailure = true }: { newTab?: boolean; harness?: string; reportFailure?: boolean } = {}): Promise<ChatSnapshot | null> => {
     // The Awui harness's history is global; a new chat belongs on the home workspace, not wherever a coding chat left the picker.
     if (!projectScoped(boot?.harnesses ?? [], harnessId ?? "") && boot && target?.path !== boot.home) {
       target = boot.home ? ({ id: "__home", path: boot.home, name: "home" } as WorkspaceInfo) : target;
     }
-    if (!target || !harnessId) return;
+    const harnessKey = harness ?? harnessId;
+    if (!target || !harnessKey) return null;
     const token = beginOpen(null);
     setOpening(true);
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id } });
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId: harnessKey, workspaceId: ws.id } });
       if (token !== nav.current) {
         // The user went elsewhere while the harness spawned: the chat keeps its tab
         // (a background one after the view), not dropped for the detour.
         setTabState((st) => placeChat(st, snapshot, { newTab: true, background: true }));
         void refreshSessions();
-        return;
+        return snapshot;
       }
       showChat(snapshot, { newTab });
       void refreshSessions();
+      return snapshot;
     } catch (e) {
-      fail(e);
+      // The settings pane owns its inline failure; the composer path reports through the app banner.
+      if (token === nav.current && reportFailure) fail(e);
       setDrawerOpen(false);
+      return null;
     } finally {
       setOpening(false);
+    }
+  };
+
+  /** A new native session on the harness's default primary role: model and effort carry only when the
+      harness supports them, and the previous chat's explicit role stays untouched. A new session is
+      the supported inverse; there is no role-clearing write. */
+  const defaultChatBusy = useRef(false);
+  const newDefaultChat = async (quiet = false): Promise<void> => {
+    if (!chat || defaultChatBusy.current) return;
+    const caps = chat.capabilities;
+    if (!caps.supportsAgentSelection) return;
+    const carry: ConfigPatch = {};
+    if (caps.supportsModelSelection && chat.config.model) carry.model = chat.config.model;
+    if (caps.supportsThinkingLevel && chat.config.thinkingLevel) carry.thinkingLevel = chat.config.thinkingLevel;
+    const previous = chat;
+    defaultChatBusy.current = true;
+    try {
+      // The start-screen path creates the session with no explicit primary agent; the harness's own default applies.
+      const created = await newChat(previous.workspace, { newTab: true, harness: previous.harnessId, reportFailure: !quiet });
+      if (!created) throw new Error("Could not start a new chat on the harness default.");
+      if (carry.model !== undefined || carry.thinkingLevel !== undefined) {
+        // A new native session exists; a carry failure is reported, never silently dropped.
+        await api(`/api/chats/${created.chatId}/config`, { method: "PATCH", body: carry }).catch((error) => { fail(error); });
+      }
+      // The old chip/dialog owner is detached with the previous chat. If closing it left focus on
+      // body, the new composer is the only sensible owner for the next prompt.
+      window.requestAnimationFrame(() => {
+        if (document.activeElement === document.body) document.querySelector<HTMLElement>(".composer-card .composer-input")?.focus();
+      });
+    } finally {
+      defaultChatBusy.current = false;
     }
   };
 
@@ -2822,6 +2858,7 @@ export function App() {
                     onHandoff={(id, draft) => handoffChat(id, draft)}
                     draftTransfer={mainDraft}
                     onNewChat={() => void newChat(chat.workspace, { newTab: true })}
+                    onDefaultChat={(quiet) => newDefaultChat(quiet)}
                     limits={limits}
                   />
                 </div>
@@ -2876,6 +2913,7 @@ export function App() {
                     onConfigError={fail}
                   onHandoff={(id, draft) => handoffChat(id, draft)}
                   onNewChat={() => void newChat(chat.workspace, { newTab: true })}
+                  onDefaultChat={(quiet) => newDefaultChat(quiet)}
                   onOpenTask={(task) => void openDelegated(task)}
                   onCancelTask={(task) => void cancelDelegated(task)}
                   limits={limits}

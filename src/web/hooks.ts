@@ -14,8 +14,8 @@ export function useNow(enabled: boolean, intervalMs = 1000): number {
   return now;
 }
 
-/** How long a popover's furl plays before it unmounts (matches --dur-hover, the leave length in motion.css). */
-export const LEAVE_MS = 120;
+/** How long a popover's furl plays before it unmounts: covers the 140 ms popup leave, with a frame of margin. */
+export const LEAVE_MS = 160;
 
 /**
  * Keep a popover mounted briefly after `open` goes false so its closing furl

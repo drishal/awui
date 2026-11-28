@@ -47,9 +47,9 @@
   display: none;
 }
 
-/* The list rises from the composer card's top edge, not from the chip inside it: anchored to the chip its
-   bottom hid the message box and its placeholder. The card is the containing block for that reason
-   (.composer is positioned below), so the list never covers the box it belongs to. */
+/* The composer is the containing block used to measure a popover. The panel itself opens below
+   the visible card (above it only when the viewport has no room), aligned to its chip's column,
+   so it never covers the prompt it belongs to. */
 .composer {
   position: relative;
 }
@@ -866,6 +866,8 @@ button.harness-chip:disabled {
 /* The native dialog owns one backdrop; this list occupies viewport margins rather than
  * stretching its host or carrying a desktop clamp's negative left offset. */
 .agent-menu.is-sheet { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; width: auto; max-width: none; max-height: min(340px, 55dvh); z-index: 40; border-radius: var(--r-lg); }
+/* The pre-send sheet has no native dialog to own a scrim, so AgentPicker portals one
+ * under the panel; a sheet inside a native dialog keeps that dialog's single backdrop. */
 /* The primary role opens the config sheet's own pane, not a fixed popup below that sheet. */
 .agent-menu.is-pane { position: static; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; background: none; box-shadow: none; }
 /* A native settings pane is not a detached harness popover. Do not run the
@@ -874,7 +876,7 @@ button.harness-chip:disabled {
 .agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
 .config-back { margin: 0 0 8px; padding: 4px 0; }
 
-/* Leaving role choices cannot select a second option during their 120 ms return. */
+/* Leaving role choices cannot select a second option during their 140 ms return. */
 .agent-menu.is-leaving { pointer-events: none; }
 .config-agent-pane.is-returning { pointer-events: none; }
 @media (pointer: coarse) {
@@ -929,7 +931,7 @@ button.harness-chip:disabled {
 .config-agent-pane .agent-menu.is-pane { margin-inline-start: -6px; }
 .config-agent-pane .permission-option { padding-inline: 10px; }
 .config-pane-note { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; line-height: 1.5; }
-.config-pane-note.config-error { color: var(--danger); }
+.config-pane-note.config-error { color: var(--danger-hover); font-weight: 550; }
 .config-sheet .config-row .pill-trigger { height: 44px; }
 @media (pointer: coarse) { .config-sheet .dialog-head .icon-btn { width: 44px; height: 44px; } }
 .composer-pickers > .model-picker > .agent-menu,
@@ -961,27 +963,29 @@ button.harness-chip:disabled {
   }
 }
 
-/* Fallback when WAAPI is not available: the same 4px rise/settle as the
- * measured path. Keep the full pane visible, including every word and check;
- * don't use the historical inset wipe or an unrelated corner. */
+/* Fallback when WAAPI is not available: the same 8px rise/settle with a short
+ * opacity ramp as the measured path. The settled frame stays fully opaque.
+ * Don't use the historical inset wipe or an unrelated corner. */
 @keyframes model-grow {
-  from { opacity: 1; transform: translateY(4px); }
+  from { opacity: 0.86; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-grow-below {
-  from { opacity: 1; transform: translateY(-4px); }
+  from { opacity: 0.86; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-furl {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 1; transform: translateY(4px); }
+  60% { opacity: 0.6; transform: translateY(4px); }
+  to { opacity: 0; transform: translateY(8px); }
 }
 
 @keyframes model-furl-below {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 1; transform: translateY(-4px); }
+  60% { opacity: 0.6; transform: translateY(-4px); }
+  to { opacity: 0; transform: translateY(-8px); }
 }
 
 /* A phone's backdrop fades back out while the sheet slides down. */

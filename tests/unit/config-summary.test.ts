@@ -62,7 +62,7 @@ describe("the composer's one-line config summary", () => {
     const capabilities = caps({ supportsAgentSelection: true });
     expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: "orchestrator", agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin role" }] }) }, harnesses)).toBe("Pi · Fake Echo · orchestrator · High");
     expect(modelSummary({ harnessId: "fake", capabilities, config: config({ agent: "orchestrator", agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin role" }] }) })).toBe("Fake Echo · orchestrator · High");
-    expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: null, agents: [{ id: "build", label: "Build", description: "Default role" }] }) }, harnesses)).toBe("Pi · Fake Echo · High");
+    expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: null, agents: [{ id: "build", label: "Build", description: "Default role" }] }) }, harnesses)).toBe("Pi · Fake Echo · Harness default · High");
   });
   it("does not infer a role for an unset default, while preserving selected ordering", () => {
     const caps = { supportsAgentSelection: true, supportsModelSelection: true, supportsThinkingLevel: true, supportsPermissionMode: false };

@@ -38,7 +38,7 @@ export function configSummary(chat: SummaryChat, harnesses: Array<{ id: string; 
     // A virtual provider (MoA) says its name: "Mixture of Agents · default", not "default".
     parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
-  if (capabilities.supportsAgentSelection && config.agent) parts.push(config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent);
+  if (capabilities.supportsAgentSelection) parts.push(config.agent ? (config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent) : "Harness default");
   if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
   if (capabilities.supportsPermissionMode && config.permissionMode) {
     parts.push(config.permissionModes?.find((m) => m.id === config.permissionMode)?.label ?? config.permissionMode);

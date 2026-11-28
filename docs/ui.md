@@ -316,48 +316,61 @@ a literal colour.
   prose, paths, timestamps, model names, section labels, and card backgrounds
   stay grey. Never colour alone: glyph, word, and shape stay.
 - **The composer's chip row:** the agent, model, and thinking controls are actual
-  native triggers, not one link that shares a chevron; model and thinking sit in
-  one neutral sentence beside a **named harness chip with its own chevron** for an exceptional handoff.
-  Its accessible name includes the same harness label the user sees (for example, `Hand off from OpenCode to another harness`). The primary-role trigger stays quieter and separate: there is a 12px family break before the model sentence, not two equal identity pills.
-  StartScreen's harness chooser keeps its own meaning instead of inheriting handoff semantics.
+  native triggers, not one link that shares a chevron. Model and thinking sit in
+  one neutral sentence beside a **named harness chip with its own chevron** for an
+  exceptional handoff; its accessible name includes the same harness label the
+  user sees (for example, `Hand off from OpenCode to another harness`). The
+  primary-role trigger stays quieter and separate: a 12px family break before the
+  model sentence, not two equal identity pills. StartScreen's harness chooser
+  keeps its own meaning instead of inheriting handoff semantics.
   `model-morph.ts` (`morphShift` and `usePopupMorph`) gives all these surfaces a
-  190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
-  This travel is deliberately **4px, not a dramatic slide**. Native `will-change: transform`
-  is owned only while that motion runs, then restored after its last queued frame.
-  The complete panel, heading, choices and selection check remain laid out at
-  full size throughout; the glide does not slice words or scale the text. The
-  full size throughout; the glide does not slice words or scale the text. Model
-  surfaces keep full opacity: a large hero must never bleed through their labels.
-  The CSS fallback follows the same opaque facing-axis movement, with no clip wipe.
-  The phone's role sub-pane has the same modest composed entrance within its one
-  owning native dialog—not a second sheet. Back leaves the current role root briefly,
-  then the shared `Dialog` eases its measured body height to settings and restores focus.
-  The outgoing explanatory note stays unchanged throughout leave and resize.
-  Size holds its last frame until settings replace the pane, so neither text nor height jumps.
-  A layout commit releases that retained size and restores focus. Reduced-motion takes
-  the same settings-render ownership route, without inventing an entrance or leave.
-  Only detached harness menus carry the generic `harness-menu` motion style.
-  Within the native role pane, `AgentOptions` uses shared option-row styles; a
-  detached-menu class would also apply an unwanted second spring/clip. Its
-  first sample must fit all choices within the owning dialog, not just the lowest row.
-  panel's containing block supplies the placement, above the prompt, and a short
-  measured travel expresses the trigger's direction without covering input.
+  190 ms rise/settle toward the trigger's facing edge and a 140 ms return. The
+  travel is **8px with a brief 0.86→1 opacity ramp on the panel as a whole**, so
+  the first visible frame is in motion rather than a finished pop; it lands fully
+  opaque. Popovers **anchor to their own chip**: 8px below the composer's card
+  (or above it when the viewport has no room below), left-aligned to the trigger
+  and clamped to the viewport. A leave fades to 0 through a mid-stop; the outgoing
+  popover is gone before the next surface substitutes it. `will-change: transform`
+  is owned only while that motion runs and restored afterwards, including on a
+  cancelled reopen. The complete panel, heading, choices and selection check stay
+  laid out at full size throughout; the glide never slices words or scales text.
+  The CSS fallback follows the same facing-axis movement and ends opaque, without
+  a clip wipe.
+  The phone's role sheet portals its one scrim and the panel together; Tab closes
+  the listbox and returns focus to the invoking chip, exactly as Escape does. The
+  native role sub-pane has the same modest composed entrance inside its one owning
+  dialog—not a second sheet. Back leaves the current role root briefly, then the
+  shared `Dialog` eases its measured body height to settings and restores focus.
+  Only detached harness menus carry the generic `harness-menu` motion style; within
+  the native role pane, `AgentOptions` uses shared option-row styles, because the
+  detached class would add an unwanted second spring/clip. The pane's first sample
+  must fit every choice inside its owning dialog, not just the lowest row.
   `AgentOptions.tsx` owns the one focused primary-role list (arrows, Home, End,
   Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
-  it as a sub-pane of the existing native dialog, with Back and focus restoration,
+  it as a sub-pane of the existing native dialog, with Back and focus restoration.
   A setting waits for its native apply. Other configuration controls and handoffs
-  stay disabled until the request settles. `applying` guards the role pane's own Back/Escape,
-  while `closeLocked` guards Close, backdrop Cancel, and swipe dismissal. Disabled controls
-  dim without losing current selection or keyboard navigation cues. The measured outgoing
-  root keeps its end frame (`fill: "forwards"`) before its settings view replaces it.
-  Close restores the composer settings invoker even if it hid its previous inner focus owner.
-  A failure stays in the awaiting pane as its one error announcement; Back clears it.
-  use `onConfigError` for their original single failure notice rather than creating
-  duplicate inline and global error messages.
-  instead of floating a second sheet over its parent. Common choices lead; the
-  harness handoff list follows. The permission mode stays separate, with its
-  safe default as a quiet shield and a cautious mode named in its warning wash.
-  Send is the row's one solid and the one control a size larger, 40 px round.
+  stay disabled until the request settles. `applying` guards the role pane's own
+  Back/Escape, while `closeLocked` guards Close, backdrop Cancel, and swipe
+  dismissal. Disabled controls dim without losing the current selection or
+  keyboard-navigation cues. The measured outgoing root keeps its end frame
+  (`fill: "forwards"`) until its settings view replaces it. Close restores the
+  composer settings invoker even if it hid the previous inner focus owner. A
+  configuration failure stays in the awaiting pane as its one error announcement;
+  Back clears it. Composer controls use `onConfigError` for their original single
+  failure notice rather than creating duplicate inline and global errors.
+  A role choice opens as a sub-pane inside the settings dialog instead of floating
+  a second sheet over its parent. When Harness default starts a fresh chat, the old
+  chip or pane owner is detached with the previous chat, so the new composer takes
+  focus if the close left it on the document body. Common choices lead; the harness handoff list
+  follows. The permission mode stays separate, with its safe default as a quiet
+  shield and a cautious mode named in its warning wash.
+  Send is the row's one solid and one control a size larger, 40px round; a coarse
+  pointer raises Send, Stop and the context chip to 44px, and hides attachment
+  controls while Steer/Follow-up/Then/Stop own the row instead of stranding a lone
+  `+` above it. Stop keeps a 30% danger wash at rest and a 40% wash on hover, behind
+  a 55% danger edge. While a run is active, the composer's own empty prompt begins
+  `Working · …` (or `Stopping`/`Compacting`), so the state is named at the point of
+  typing as well as in the header and sidebar.
 
 - **Where the effort slider sits:** `EffortSlider.tsx` is the slider alone; `ThinkingPicker.tsx` wraps it in the composer's pill and popover (the chat's own level), and `ModelPicker.tsx` draws it inline as the footer of the model list (the level a new chat starts on, on the start screen and in Board rooms), where its first stop is "Model default" and a model with other levels is a new slider. A change still settling is sent when its surface closes, never on a model switch (the stops it belonged to are gone).
 - **Thinking defaults as actual choices:** `supportsThinkingDefault` is declared only by a harness that can clear its override. It gives the slider a separate **Default** stop rather than renaming the weakest real level. Each real or previewed stop keeps its own name and `aria-valuetext`; Escape refocuses the thinking trigger. `Chat.setConfig` rejects an empty clear on every other harness, so reset semantics cannot be fabricated by the picker. On an OpenCode session, that reset omits the variant override, preserving model identity and the selected primary agent.

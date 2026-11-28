@@ -2,7 +2,7 @@
 // effects and the phone sheet. Model inference is still the scripted fixture.
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { signInAndOpen, openCodeChat } from "./helpers.js";
+import { signInAndOpen, openCodeChat, newChat } from "./helpers.js";
 
 
 function assertPhase<T>(value: T | null, phase: string): T {
@@ -14,7 +14,7 @@ interface FixtureState {
   createdAgents?: Array<string | null>;
   agentSwitches?: Array<{ sessionID: string; agent: string }>;
   modelSet?: number;
-  sessions: Record<string, { agent?: string; model?: { variant?: string; id?: string; providerID?: string } }>;
+  sessions: Record<string, { agent?: string; model?: { variant?: string; id?: string; providerID?: string }; messages?: Array<{ text?: string }> }>;
 }
 const fixture = () => JSON.parse(readFileSync(process.env.AWUI_OPENCODE_STATE as string, "utf8")) as FixtureState;
 
@@ -76,7 +76,8 @@ test("the pre-send new-chat screen lists primary roles and uses one on OpenCode 
   await picker.click();
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("option")).toHaveCount(3);
+  await expect(menu.getByRole("option")).toHaveCount(4);
+  await expect(menu.getByRole("option", { name: "Harness default", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(menu.getByRole("option", { name: "orchestrator", exact: true })).toBeVisible();
   await expect(menu.getByRole("option", { name: "Build", exact: true })).toBeVisible();
   await expect(menu.getByRole("option", { name: "Plan", exact: true })).toBeVisible();
@@ -92,9 +93,35 @@ test("the pre-send new-chat screen lists primary roles and uses one on OpenCode 
   expect(fixture().sessions[(snapshot.sessionId as string).replace(/^.*?:/, "")]?.agent).toBe("orchestrator");
   expect(fixture().createdAgents).toContain("orchestrator");
   await expect(page.getByTestId("agent-picker")).toHaveAccessibleName("Agent: orchestrator");
+  // Let the composer's landing motion finish before taking the evidence still.
+  await page.waitForTimeout(700);
   await page.screenshot({ path: "test-results/opencode-new-chat-agents-desktop.png" });
 });
 
+test("the start screen clears a pending primary role through Harness default", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page);
+  await page.getByRole("button", { name: "Agent for this chat" }).click();
+  await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
+  const picker = page.locator(".start-screen").getByTestId("agent-picker");
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "orchestrator", exact: true }).click();
+  await expect(picker).toHaveAccessibleName("Agent: orchestrator");
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true }).click();
+  // The inverse is null, not an empty role id: the chip names the default and the row is selected.
+  await expect(picker).toHaveAccessibleName("Agent: Harness default");
+  await picker.click();
+  await expect(page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+  await page.getByRole("textbox", { name: "Message" }).fill("pre-send inverted");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  const snapshot = await (await page.request.get(`/api/chats/${/chat=([^/]+)$/.exec(page.url())?.[1]}`)).json();
+  // The create carried no role; OpenCode's own default then resolves on the first step.
+  expect(fixture().createdAgents?.at(-1)).toBeNull();
+  expect(snapshot.config.agent).toBe("build");
+});
 test("the pre-send role picker works on a phone inside its viewport", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -112,6 +139,19 @@ test("the pre-send role picker works on a phone inside its viewport", async ({ p
     expect(bounds!.x).toBeGreaterThanOrEqual(0);
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(844);
+  await expect(menu).toBeFocused();
+  await expect(page.locator(".model-backdrop")).toBeVisible();
+  // Tab leaves the visible sheet by returning to the chip that opened it, not by moving focus behind it.
+  await page.keyboard.press("Tab");
+  await expect(menu).toHaveCount(0);
+  await expect(picker).toBeFocused();
+  await picker.click();
+  await expect(menu).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(picker).toBeFocused();
+  await picker.click();
+  await expect(menu).toBeFocused();
   await expect(page.locator(".start-screen")).toBeVisible();
   await page.screenshot({ path: "test-results/opencode-pre-send-phone.png" });
   await menu.getByRole("option", { name: "orchestrator", exact: true }).click();
@@ -139,7 +179,8 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await expect(pane.locator(".config-pane-note")).toContainText("model and permissions stay separate");
   await expect(pane.locator(".config-pane-note")).toContainText("OpenCode");
   await expect(pane.locator(".config-pane-note")).toContainText("Harness default");
-  await expect(pane.getByRole("option", { selected: true })).toHaveCount(0);
+  await expect(pane.getByRole("option", { selected: true, name: "Harness default" })).toHaveCount(1);
+  await expect(pane.getByRole("option", { selected: true })).toHaveCount(1);
   await expect(page.getByRole("dialog", { name: "Chat settings" })).toHaveCount(0);
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   const paneMotion = await pane.evaluate(el => {
@@ -155,7 +196,7 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   expect(paneMotion.clip).toBe("none");
   expect(paneMotion.opacity).toBeGreaterThanOrEqual(0.72);
   expect(await menu.getByRole("option").evaluateAll(rows => rows.every(row => row.getBoundingClientRect().bottom <= row.closest("dialog")!.getBoundingClientRect().bottom))).toBe(true);
-  expect(paneMotion.roleCount).toBe(3);
+  expect(paneMotion.roleCount).toBe(4);
   // This is an animated native dialog, so measure steady hit geometry once it has actually settled.
   await menu.evaluate(async (el) => { await Promise.all((el.closest("dialog")?.getAnimations({ subtree: true }) ?? []).map((a) => a.finished.catch(() => undefined))); });
   await expect(menu).not.toHaveClass(/harness-menu/);
@@ -181,6 +222,7 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await sheet.getByTestId("agent-picker").click();
   await expect(page.getByRole("listbox", { name: "Primary agent" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Chat settings" })).toBeHidden();
   await expect(page.getByTestId("config-chip")).toContainText("Build");
@@ -198,6 +240,163 @@ test("a harness with no primary-agent catalogue gains no fabricated default-role
   await expect(page.getByTestId("agent-picker")).toHaveCount(0);
 });
 
+
+test("choosing Harness default after a role opens a new chat on the default", async ({ page }) => {
+  await openCodeChat(page);
+  await page.getByRole("textbox", { name: "Message" }).fill("before the default");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  const before = page.url();
+  // The chat's config picker, not the start screen's creation chip.
+  const picker = page.locator(".composer-card").getByTestId("agent-picker");
+  // Deliberately select Plan so the default state has a real inverse to exercise.
+  await picker.click();
+  const list = page.getByRole("listbox", { name: "Primary agent" });
+  await list.getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  // Carry a real effort too, so the new default chat proves it kept effort while the old role stays.
+  const oldId = /chat=([^/]+)$/.exec(page.url())?.[1] as string;
+  await page.getByTestId("thinking-picker").click();
+  await page.getByRole("slider", { name: "Thinking" }).press("End");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await (await page.request.get(`/api/chats/${oldId}`)).json()).config.thinkingLevel).toBe("high");
+  const oldSnapshot = await (await page.request.get(`/api/chats/${oldId}`)).json();
+  expect(oldSnapshot.config.agent).toBe("plan");
+  // Wait for the leave furl to unmount before reopening, or its outside-dismiss eats the new menu.
+  await page.locator(".agent-menu").waitFor({ state: "detached" });
+  // Choosing the truthful Harness default row starts a fresh chat; the old one stays.
+  await picker.click();
+  await page.locator(".agent-menu").evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "the settled menu holds focus").toBe("Primary agent");
+  // Keyboard activation of the truthful Harness default row (the one-way door's inverse).
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.getByTestId("config-chip").innerText(), "the fresh default chat voices Harness default once its catalog arrives").toContain("Harness default");
+  expect(page.url()).not.toBe(before);
+  const newSnapshot = await (await page.request.get(`/api/chats/${/chat=([^/]+)$/.exec(page.url())?.[1]}`)).json();
+  expect(newSnapshot.config.agent ?? null).toBeNull();
+  expect(newSnapshot.config.model).toBe(oldSnapshot.config.model);
+  expect(newSnapshot.config.thinkingLevel).toBe("high");
+  // The old menu owner is gone with the chat; the fresh composer takes the next keystroke.
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+  // The fresh native session selects no explicit role.
+  await page.locator(".composer-card").getByTestId("agent-picker").click();
+  await expect(page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+  // The old native session keeps the explicit role the inverse left behind.
+  await page.goto(before);
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await expect(page.getByTestId("model-picker")).toHaveAccessibleName("Model: Fast Free");
+  await page.locator(".composer-card").getByTestId("agent-picker").click();
+  await expect(page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+});
+
+test("a rejected Harness-default creation keeps the role pane and its error", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openCodeChat(page);
+  // Give the chat an explicit role first, so Harness default is an action rather than the current state.
+  await page.getByTestId("config-chip").click();
+  await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+  const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
+  await pane.getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await page.locator("dialog[open]").waitFor({ state: "detached" });
+  await page.route("**/api/chats", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "no session" }) });
+  });
+  await page.getByTestId("config-chip").click();
+  await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+  await pane.getByRole("option", { name: "Harness default", exact: true }).click();
+  // Creation failed, so the current chat remains authoritative and the pane stays for Back/retry.
+  await expect(pane.getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(pane.locator(".config-pane-note")).toContainText("Could not start a new chat");
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  // The settings pane owns the single notice; the app banner must not repeat it.
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("choosing Harness default in Chat settings focuses the fresh composer", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openCodeChat(page);
+  // Put the chat on an explicit role first, so the settings pane's default is an action.
+  await page.getByTestId("config-chip").click();
+  await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+  const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
+  await pane.getByRole("option", { name: "Build", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Build");
+  await page.locator("dialog[open]").waitFor({ state: "detached" });
+  await page.getByTestId("config-chip").click();
+  await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+  await pane.getByRole("option", { name: "Harness default", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Harness default");
+  // The settings invoker belonged to the old chat; focus lands in the new composer, not on body.
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+});
+
+test("a popover create failure reports one banner and keeps the chat", async ({ page }) => {
+  await openCodeChat(page);
+  const picker = page.locator(".composer-card").getByTestId("agent-picker");
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await page.locator(".agent-menu").waitFor({ state: "detached" });
+  const tabs = await page.getByRole("tab").count();
+  await page.route("**/api/chats", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "no session" }) });
+  });
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true }).click();
+  // The composer owns the only notice; the current chat and its role are untouched.
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await expect(page.getByRole("tab")).toHaveCount(tabs);
+});
+
+test("a carry failure is reported on the fresh default chat", async ({ page }) => {
+  await openCodeChat(page);
+  const picker = page.locator(".composer-card").getByTestId("agent-picker");
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await page.locator(".agent-menu").waitFor({ state: "detached" });
+  await page.getByTestId("thinking-picker").click();
+  await page.getByRole("slider", { name: "Thinking" }).press("End");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await (await page.request.get(`/api/chats/${/chat=([^/]+)$/.exec(page.url())?.[1]}`)).json()).config.thinkingLevel).toBe("high");
+  await page.route("**/api/chats/*/config", async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "carry refused" }) });
+  });
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true }).click();
+  // The native chat is created; only its model/effort carry failed, and that failure is visible.
+  await expect(page.getByTestId("config-chip")).toContainText("Harness default");
+  const alert = page.getByRole("alert");
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText("carry refused");
+});
+
+test("double activation of Harness default starts exactly one native chat", async ({ page }) => {
+  await openCodeChat(page);
+  const picker = page.locator(".composer-card").getByTestId("agent-picker");
+  await picker.click();
+  await page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("config-chip")).toContainText("Plan");
+  await page.locator(".agent-menu").waitFor({ state: "detached" });
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await picker.click();
+  const option = page.getByRole("listbox", { name: "Primary agent" }).getByRole("option", { name: "Harness default", exact: true });
+  // Two synchronous activations, as a double-click or a held Enter delivers them.
+  await option.evaluate((el) => {
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect(page.getByTestId("config-chip")).toContainText("Harness default");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+});
 // Selection state and effort preferences use native values, not visual highlights or aliases.
 test("the model listbox keeps keyboard focus separate from the actually selected model", async ({ page }) => {
   await openCodeChat(page);
@@ -240,6 +439,8 @@ test("the model listbox keeps keyboard focus separate from the actually selected
 
 test("OpenCode's thinking default is a named stop with a real way back", async ({ page }) => {
   const chatId = await openCodeChat(page);
+  // The fixture counts model writes for the whole server; measure this test's own writes.
+  const modelSetBefore = fixture().modelSet;
   const think = page.getByTestId("thinking-picker");
   await page.getByRole("textbox", { name: "Message" }).fill("ticking");
   await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -272,7 +473,7 @@ test("OpenCode's thinking default is a named stop with a real way back", async (
   await page.getByRole("slider", { name: "Thinking" }).press("Home");
   await expect.poll(config).toBe(null);
   await expect.poll(variant).toBe("default");
-  expect(fixture().modelSet).toBe(4);
+  expect((fixture().modelSet ?? 0) - (modelSetBefore ?? 0)).toBe(4);
 });
 
 test("Escape returns a thinking control's focus without inventing a state change", async ({ page }) => {
@@ -298,7 +499,7 @@ test("the role surface keeps its labels and selection intact throughout its morp
   await expect(menu).toBeFocused();
   await expect(menu.getByRole("option", { name: "Build", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(menu.getByRole("option", { name: "Build", exact: true }).locator(".harness-option-check")).toBeVisible();
-  await expect(menu.getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-describedby", /-2-desc$/);
+  await expect(menu.getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-describedby", /-desc$/);
   await expect(menu.getByRole("option", { name: "Plan", exact: true })).toHaveAccessibleDescription("Read-only planning");
   const sample = async (at: number) => {
     await menu.evaluate((el, t) => {
@@ -330,7 +531,7 @@ test("the role surface keeps its labels and selection intact throughout its morp
     });
     expect(result.clip).toBe("none");
     expect(result.transform).toMatch(/^matrix\(1, 0, 0, 1, 0(?:\.0+)?, /);
-    expect(result.labels).toHaveLength(3);
+    expect(result.labels).toHaveLength(4);
     expect(result.labels.every((line) => line.inside && line.checkInside)).toBe(true);
     expect(result.labels.filter((line) => line.selected === "true").map((line) => line.text)).toEqual(["Build"]);
   };
@@ -438,7 +639,7 @@ test("phone role selection applies before closing and keeps errors in the owning
     expect(page.url()).toBe(chatBeforeApply);
     await expect(pane.getByRole("button", { name: "Back to chat settings" })).toBeDisabled();
     await expect(pane.getByRole("button", { name: "Close", exact: true })).toBeDisabled();
-    await expect(pane.locator("[role=option][aria-disabled=true]")).toHaveCount(3);
+    await expect(pane.locator("[role=option][aria-disabled=true]")).toHaveCount(4);
     expect(await pane.getByRole("button", { name: "Close", exact: true }).evaluate(el => Number(getComputedStyle(el).opacity))).toBeLessThan(1);
     await expect(pane.getByRole("button", { name: "Back to chat settings" })).toHaveAttribute("title", "Close when saving finishes");
     // Pointer-selected focus need not be a visible keyboard ring; exercise real locked keyboard navigation.
@@ -516,12 +717,13 @@ test("phone role selection applies before closing and keeps errors in the owning
         futureButtons: root.querySelectorAll("[data-testid=model-picker]").length,
       };
     });
-    expect(reverse.labels).toBe(3);
+    expect(reverse.labels).toBe(4);
     expect(reverse.selected).toBe("Plan");
     expect(reverse.at).toBe(40);
     expect(reverse.clip).toBe("none");
     expect(reverse.fill).toBe("forwards");
-    expect(reverse.opacity).toBeCloseTo(0.72, 5);
+    // The outgoing pane has finished fading: substitution never shows a ghost.
+    expect(reverse.opacity).toBe(0);
     expect(reverse.outgoingState).toBe("finished");
     expect(reverse.owner).toBe("Primary agent");
     expect(reverse.disabled).toBe("true");
@@ -529,11 +731,12 @@ test("phone role selection applies before closing and keeps errors in the owning
     expect(reverse.textInside).toBe(true);
     expect(reverse.futureButtons).toBe(0);
     expect(Number.isFinite(reverse.from) && Number.isFinite(reverse.target)).toBe(true);
-    expect(reverse.target).toBeGreaterThan(reverse.from);
-    expect(reverse.current).toBeGreaterThan(reverse.from);
-    expect(reverse.sizeFill).toBe("forwards");
+    const low = Math.min(reverse.from, reverse.target);
     expect(Math.abs(reverse.before - reverse.from)).toBeLessThan(0.02);
-    expect(reverse.current).toBeLessThan(reverse.target);
+    const high = Math.max(reverse.from, reverse.target);
+    expect(reverse.sizeFill).toBe("forwards");
+    expect(reverse.current).toBeGreaterThan(low);
+    expect(reverse.current).toBeLessThan(high);
     await snapshot.evaluate(async root => {
       const dialog = root.closest("dialog")!;
       const runs = [...root.getAnimations(), ...dialog.querySelector(".dialog-body")!.getAnimations()].filter(a => a.id === "morph:pane" || a.id === "morph:pane-size");
@@ -587,19 +790,31 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   await trigger.click();
   const opening = await phase(40, false);
   expect(opening.clip).toBe("none");
-  expect(opening.opacity, "the opaque panel stays legible over large text behind it").toBe(1);
+  // The enter ramp is below 1 mid-flight but the settled frame is fully opaque over the hero.
+  expect(opening.opacity, "the entering panel is already legible over large text behind it").toBeGreaterThanOrEqual(0.8);
+  expect(opening.opacity).toBeLessThan(1);
   expect(opening.parts.every(part => part.inside)).toBe(true);
   expect(opening.parts.length).toBeGreaterThan(1);
   await pop.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
+  expect(await pop.evaluate(el => Number(getComputedStyle(el).opacity)), "the settled menu is fully opaque over the hero").toBe(1);
   await pop.screenshot({ path: "test-results/model-motion-rest.png" });
   expect(await pop.evaluate(el => getComputedStyle(el).willChange)).toBe("auto");
   await page.keyboard.press("Escape");
-  const closing = await phase(40, true);
+  // Early in the leave, while the fast-start ramp is still legible.
+  const closing = await phase(20, true);
   expect(closing.clip).toBe("none");
-  expect(closing.opacity, "the outgoing model menu remains opaque over the hero").toBe(1);
+  expect(closing.opacity, "the outgoing model menu is still legible early in its leave").toBeGreaterThanOrEqual(0.4);
   expect(closing.width).toBe(opening.width);
   expect(closing.height).toBe(opening.height);
   expect(closing.parts.every(part => part.inside)).toBe(true);
+  // The finished leave holds opacity 0 through the unmount window; clearing it would flash the panel.
+  expect(await pop.evaluate(async (el) => {
+    const run = el.getAnimations().find(animation => animation.id === "morph:popup");
+    if (!run) return null;
+    run.finish();
+    await Promise.resolve();
+    return Number(getComputedStyle(el).opacity);
+  })).toBe(0);
   await pop.waitFor({ state: "detached" });
   await expect(pop).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: "reduce" });

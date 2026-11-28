@@ -496,11 +496,84 @@ test("stop shows Stopping, then settles with the turn marked stopped", async ({ 
   await newChat(page);
   await send(page, "slow and long");
   await expect(status(page)).toHaveText("Working");
-  await page.getByRole("button", { name: "Stop the agent" }).click();
+  const stop = page.getByRole("button", { name: "Stop the agent" });
+  const restWash = await stop.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await stop.hover();
+  const hovered = await stop.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, edge: getComputedStyle(el).borderTopColor }));
+  const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+  // The neutral round-button hover must not erase the danger wash: both fill and edge stay red-dominant.
+  expect(hovered.bg).not.toBe(restWash);
+  for (const colour of [hovered.bg, hovered.edge]) {
+    const channels = rgb(colour);
+    expect(channels).toHaveLength(3);
+    const [r, g, b] = channels as [number, number, number];
+    expect(r - g).toBeGreaterThan(0.1);
+    expect(r - b).toBeGreaterThan(0.1);
+  }
+  await stop.click();
   await expect(status(page)).toHaveText(/Stopping|Idle/);
   await expect(status(page)).toHaveText("Idle", { timeout: 15_000 });
   await expect(page.locator(".stopped-pill")).toHaveText("Stopped");
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+});
+
+test("coarse composer actions keep finger-sized targets and a centered chevron", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  try {
+    await signInAndOpen(page);
+    await newChat(page);
+    await send(page, "slow and long");
+    await expect(status(page)).toHaveText("Working");
+    // The composer itself names the run, not only the header and sidebar.
+    await expect(page.locator(".composer-input")).toHaveAttribute("data-placeholder", /^Working · /);
+    // The context chip is a thumb target, and attachment steps aside instead of a stranded + row.
+    const ring = await page.locator(".context-ring").boundingBox();
+    expect(ring).not.toBeNull();
+    expect(ring!.width).toBeGreaterThanOrEqual(44);
+    expect(ring!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator(".composer-attach")).toBeHidden();
+    const stop = page.getByRole("button", { name: "Stop the agent" });
+    const stopBox = await stop.boundingBox();
+    expect(stopBox).not.toBeNull();
+    expect(stopBox!.width).toBeGreaterThanOrEqual(44);
+    expect(stopBox!.height).toBeGreaterThanOrEqual(44);
+    const actions = page.locator(".composer-actions .pill-btn");
+    await expect(actions.first()).toBeVisible();
+    for (const box of await actions.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) {
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    // Five coarse actions share one row: no wrapped label and no sideways overflow.
+    expect(await actions.evaluateAll((els) => els.every((el) => getComputedStyle(el).whiteSpace === "nowrap"))).toBe(true);
+    expect(await page.locator(".composer-actions").evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(
+      await page.locator(".composer-actions").evaluate((el) => el.clientWidth),
+    );
+    const more = page.locator(".then-split .then-more");
+    const bounds = await more.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    const offCentre = await more.evaluate((el) => {
+      const button = el.getBoundingClientRect();
+      const chevron = el.querySelector("svg")!.getBoundingClientRect();
+      return Math.abs((chevron.left + chevron.width / 2) - (button.left + button.width / 2));
+    });
+    expect(offCentre).toBeLessThanOrEqual(1.1);
+    await stop.click();
+    await expect(status(page)).toHaveText("Idle", { timeout: 15_000 });
+    const sendButton = page.getByRole("button", { name: "Send", exact: true });
+    const sendBox = await sendButton.boundingBox();
+    expect(sendBox).not.toBeNull();
+    expect(sendBox!.width).toBeGreaterThanOrEqual(44);
+    expect(sendBox!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator(".composer-attach")).toBeVisible();
+    const idleRing = await page.locator(".context-ring").boundingBox();
+    expect(idleRing).not.toBeNull();
+    expect(idleRing!.width).toBeGreaterThanOrEqual(44);
+    expect(idleRing!.height).toBeGreaterThanOrEqual(44);
+  } finally {
+    await context.close();
+  }
 });
 
 test("an approval takes over the composer and is recorded in the turn", async ({ page }) => {

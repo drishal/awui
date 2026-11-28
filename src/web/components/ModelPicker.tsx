@@ -144,9 +144,8 @@ export function ModelPicker({
     if (onThinking && thinking && !next.includes(thinking)) onThinking("");
   };
 
-  // Place above the box the chip sits in; size to the space. In the composer that is the card itself
-  // (model-picker.css anchors the list to it), because measuring the chip's own row would let the list
-  // reach down over the message box it belongs to.
+  // Size to the space around the box the chip sits in. In the composer that is the card itself;
+  // model-morph then places the panel below it (or above when there is no room), never over the prompt.
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
     const composer = trigger.current.closest<HTMLElement>(".composer-pickers")?.closest<HTMLElement>(".composer");
@@ -154,11 +153,13 @@ export function ModelPicker({
     const band = clipBand(trigger.current);
     const above = rect.top - band.top - 16;
     const below = band.bottom - rect.bottom - 16;
-    // The composer sits on the column's floor, so its list always opens upwards; a chip elsewhere (Board's
-    // combined chip) turns to the other side when the room above is short.
-    const useBelow = !composer && above < 280 && below > above;
-    // Fit the side it opens on; never taller than the room (that would push it off-screen).
-    setPlace({ below: useBelow, maxHeight: Math.max(120, Math.min(520, useBelow ? below : above)) });
+    // The composer's model list is anchored below its card by model-morph; a chip
+    // elsewhere (Board's combined chip) turns to the roomier side.
+    const useBelow = Boolean(composer) || (above < 280 && below > above);
+    // model-morph picks the final side from the panel's real height, so cap it by the
+    // larger side; capping to the smaller clip band would cut the list before that choice.
+    const room = composer ? Math.max(above, below) : (useBelow ? below : above);
+    setPlace({ below: useBelow, maxHeight: Math.max(120, Math.min(520, room)) });
     const start = flat.findIndex((m) => m.key === current);
     // Typed ahead, the first match is the one Enter takes; opened plain, the current model is.
     setActive(start >= 0 && !query ? start : 0);

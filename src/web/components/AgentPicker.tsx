@@ -8,12 +8,14 @@ import { usePopupMorph } from "../model-morph.js";
 import { IconChevronDown } from "../icons.js";
 import { AgentOptions } from "./AgentOptions.js";
 
-export function AgentPicker({ agents, current, disabled, viewportSheet = false, onSelect, onOpen }: {
+export function AgentPicker({ agents, current, disabled, viewportSheet = false, onSelect, onDefault, onOpen }: {
   agents: AgentInfo[];
   current: string | null;
   disabled: boolean;
   viewportSheet?: boolean;
   onSelect: (id: string) => void;
+  /** A harness can start a fresh default-native chat; the existing session's explicit role stays. */
+  onDefault?: () => void;
   onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -41,24 +43,37 @@ export function AgentPicker({ agents, current, disabled, viewportSheet = false, 
     setShift(Math.floor(Math.max(8 - left, Math.min(0, window.innerWidth - 8 - right))));
   }, [open, viewportSheet]);
   usePopupMorph(trigger, list, showMenu, leaving);
-  const menu = <AgentOptions ref={list} agents={agents} current={current} onBack={() => close(true)}
+  const menu = <AgentOptions ref={list} agents={agents} current={current} onDefault={onDefault} onBack={() => close(true)}
     onSelect={(id) => { close(true); if (id !== current) onSelect(id); }}
-    viewport={viewportSheet} shift={viewportSheet ? 0 : shift} leaving={leaving} onTab={() => close(false)} />;
+    viewport={viewportSheet} shift={viewportSheet ? 0 : shift} leaving={leaving} onTab={() => close(true)} />;
+  // A phone sheet portals its scrim and panel together: the scrim must sit under the panel in the
+  // top layer's sibling order, not back in the start screen's flow.
+  const host = viewportSheet ? (wrap.current?.closest("dialog") ?? document.body) : null;
+  // A native dialog already owns one scrim; only the start screen's sheet adds its own.
+  const sheetScrim = host !== null && !(host instanceof HTMLDialogElement);
   return (
     <div className="model-picker" ref={wrap}>
       <button ref={trigger} type="button" className="pill-trigger agent-trigger" aria-haspopup={onOpen ? "dialog" : "listbox"} aria-expanded={onOpen ? undefined : open}
         aria-label={`Agent: ${label}`} title={agents.find((agent) => agent.id === current)?.description ?? "Primary agent"}
-        disabled={disabled || agents.length === 0} data-testid="agent-picker" data-agent={current ?? ""}
+        disabled={disabled || agents.length === 0} data-testid="agent-picker" data-agent={current ?? ""} data-default-ready={onDefault !== undefined || undefined}
         onClick={show} onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); show(); }
         }}>
         <span className="pill-label">{label}</span><IconChevronDown size={12} />
       </button>
       {showMenu ? (
-        <>
-          {!viewportSheet ? <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} /> : null}
-          {viewportSheet ? createPortal(menu, wrap.current?.closest("dialog") ?? document.body) : menu}
-        </>
+        viewportSheet && host ? createPortal(
+          <>
+            {sheetScrim ? <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(true)} /> : null}
+            {menu}
+          </>,
+          host,
+        ) : (
+          <>
+            {!viewportSheet ? <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(true)} /> : null}
+            {menu}
+          </>
+        )
       ) : null}
     </div>
   );

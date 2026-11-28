@@ -41,7 +41,52 @@ body {
   .pill-trigger,
   .pill-btn,
   .btn-small {
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  /* A phone's action row holds Steer, Follow-up, Then, its chevron and Stop. Keep each
+     label on one line and tighten only the coarse row so all five still fit. */
+  .composer-actions {
+    gap: 4px;
+  }
+
+  .composer-actions .pill-btn {
+    white-space: nowrap;
+    padding-inline: 9px;
+  }
+
+  .then-split .then-more {
+    min-width: 44px;
+  }
+
+  /* The composer's Send/Stop is 40px for a mouse; the more specific base rule would
+     otherwise beat .round-btn's 44px above, leaving a thumb target under the guideline. */
+  .composer-actions .round-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The context chip joins the row's 44px targets; it is not a .round-btn. */
+  .context-ring {
+    min-width: 44px;
+    height: 44px;
+    padding-inline: 8px;
+    justify-content: center;
+  }
+
+  /* While Steer/Follow-up/Then/Stop own the action row, phone attachment controls
+     step aside instead of stranding one + on a sparse line above it. */
+  .composer-bar:has(.composer-actions .pill-btn) .composer-attach,
+  .composer-bar:has(.composer-actions .pill-btn) .composer-capture,
+  .composer-bar:has(.composer-actions .pill-btn) .stash {
+    display: none;
+  }
+
+  /* A 360px row is ~9px wider than the card: tighten only the pill padding there. */
+  @media (max-width: 360px) {
+    .composer-actions .pill-btn {
+      padding-inline: 6px;
+    }
   }
 
   .session {

@@ -69,7 +69,7 @@ export function StartScreen({
   onThinking?: (level: string) => void;
   onModel: (key: string) => void;
   onRefreshModels: () => Promise<void>;
-  onAgent?: (id: string) => void;
+  onAgent?: (id: string | null) => void;
   workspace: { name: string; path: string } | null;
   /** Recent folder paths, newest first (the chip's menu, plus "Choose another folder…"). */
   recent: string[];
@@ -342,7 +342,7 @@ export function StartScreen({
                 {/* The same split pill a chat's composer draws: the harness mark, then the model (and
                     its level) as one sentence. The folder stays its own chip: it is a different kind
                     of choice. */}
-                {showAgents ? <AgentPicker agents={agents} current={agent} viewportSheet={window.matchMedia("(max-width: 819px)").matches} disabled={busy} onSelect={(id) => onAgent?.(id)} /> : null}
+                {showAgents ? <AgentPicker agents={agents} current={agent} viewportSheet={window.matchMedia("(max-width: 819px)").matches} disabled={busy} onSelect={(id) => onAgent?.(id)} onDefault={() => onAgent?.(null)} /> : null}
                 <div className="composer-pill">
                   <HarnessMenu
                     variant="chip"

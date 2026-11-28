@@ -61,6 +61,7 @@ export function ComposerControls({
   onConfigError,
   onRefreshModels,
   onHandoff,
+  onDefaultChat,
 }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
@@ -68,6 +69,7 @@ export function ComposerControls({
   onConfigError: (error: unknown) => void;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string) => Promise<void>;
+  onDefaultChat?: (quiet?: boolean) => Promise<void>;
 }) {
   const caps = chat.capabilities;
   const change = (patch: ConfigPatch) => { void onConfig(patch).catch(onConfigError); };
@@ -83,7 +85,7 @@ export function ComposerControls({
   return (
     <div className="composer-controls" data-harness-accent={current?.accent}>
       <div className={`composer-pickers${loading ? " is-loading" : ""}`} aria-busy={loading || undefined}>
-        {agents ? <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle} onSelect={(agent) => change({ agent })} /> : null}
+        {agents ? <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle} onSelect={(agent) => change({ agent })} onDefault={onDefaultChat} /> : null}
         {/* One split pill: the harness mark leads, and model and level read together as a single
             sentence ("Fake Echo · Low"). Each piece is still its own menu. */}
         <div className="composer-pill">
@@ -145,6 +147,7 @@ export function ComposerControls({
           harnesses={harnesses}
           onConfig={onConfig}
           onHandoff={onHandoff}
+          onDefaultChat={onDefaultChat ? () => onDefaultChat(true) : undefined}
           onRefreshModels={onRefreshModels}
           onClose={() => setSettings(false)}
         />

@@ -14,6 +14,7 @@
 .then-split .then-more {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 0 8px;
   border-radius: 0 999px 999px 0;
 }

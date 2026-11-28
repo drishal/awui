@@ -96,6 +96,7 @@ export function Composer({
   onConfigError,
   onRefreshModels,
   onHandoff,
+  onDefaultChat,
   onNewChat,
   limits,
   draftTransfer,
@@ -119,6 +120,8 @@ export function Composer({
   onConfigError: (error: unknown) => void;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string, draft: string) => Promise<void>;
+  /** Starts a fresh chat on the harness's default primary role, when this harness supports that inverse. */
+  onDefaultChat?: (quiet?: boolean) => Promise<void>;
   /** Ctrl+Alt+Enter: once the message is sent, open a new chat. */
   onNewChat?: () => void;
   /** The subscriptions' limits: where a stop on a usage limit learns when it resets. */
@@ -1093,9 +1096,7 @@ export function Composer({
               closed
                 ? "This chat is closed"
                 : busy
-                  ? caps.supportsSteer
-                    ? "Steer the agent, or queue a follow-up…"
-                    : "The agent is working…"
+                  ? `${chat.status === "stopping" ? "Stopping" : chat.status === "compacting" ? "Compacting" : "Working"} · ${caps.supportsSteer ? "Steer the agent, or queue a follow-up…" : "The agent is working…"}`
                   : images.length > 0
                     ? "Say what to do with the image…"
                     : pillRow
@@ -1212,7 +1213,7 @@ export function Composer({
                 </>
               ) : null}
             </div>
-            <ComposerControls chat={chat} harnesses={harnesses} onConfig={onConfig} onConfigError={onConfigError} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} />
+            <ComposerControls chat={chat} harnesses={harnesses} onConfig={onConfig} onConfigError={onConfigError} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} onDefaultChat={onDefaultChat} />
             <div className="composer-actions">
               {tooLong ? (
                 <span className="composer-error">
