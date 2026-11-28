@@ -6,6 +6,7 @@ import { AgentPicker } from "./AgentPicker.js";
 import { AgentOptions } from "./AgentOptions.js";
 import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus, OauthAccountChoice } from "../../shared/protocol.js";
+import { handoffChoice } from "../handoff.js";
 import { errorText } from "../api.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconArrowLeft, IconCheck } from "../icons.js";
