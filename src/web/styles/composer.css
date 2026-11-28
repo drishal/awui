@@ -648,6 +648,11 @@
     display: none;
   }
 
+  /* Keep attachment and the sending actions together while settings takes its
+   * own full-width second row below them. Their shared source order alone would
+   * strand the attach, then Send on two sparse rows beneath the settings. */
+  .composer-bar .composer-controls { order: 1; }
+  .composer-bar .composer-actions { order: 0; }
   .composer-bar .composer-actions {
     margin-left: auto;
   }

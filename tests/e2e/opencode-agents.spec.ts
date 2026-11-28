@@ -299,6 +299,27 @@ test("the role surface keeps its labels and selection intact throughout its morp
   await menu.waitFor({ state: "detached" });
 });
 
+async function phoneRows(page: Page) {
+  return page.locator(".composer").evaluate((composer) => {
+    const at = (selector: string) => {
+      const el = composer.querySelector<HTMLElement>(selector);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, width: r.width, ownsPoint: el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+    };
+    return { attach: at(".composer-attach"), actions: at(".composer-actions"), chip: at(".composer-config-chip") };
+  });
+}
+function promptActionsAboveSettings(rows: Awaited<ReturnType<typeof phoneRows>>) {
+  expect(rows.attach, "attachment is present").not.toBeNull();
+  expect(rows.actions, "sending actions are present").not.toBeNull();
+  expect(rows.chip, "settings trigger is present").not.toBeNull();
+  expect(rows.attach!.bottom, "attach stays on actions' row").toBeLessThanOrEqual(rows.actions!.bottom);
+  expect(rows.attach!.bottom).toBe(rows.actions!.bottom);
+  expect(rows.chip!.top, "settings is below both actions, not between attachment and Send").toBeGreaterThanOrEqual(rows.actions!.bottom + 2);
+  for (const row of [rows.attach, rows.chip]) expect(row!.ownsPoint).toBe(true);
+}
+
 test("the phone shows the full summary with non-overlapping 44px core controls", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   try {
@@ -315,6 +336,7 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
     expect(boxes.length).toBeGreaterThanOrEqual(5);
     expect(boxes.every((box) => box.width >= 44 && box.height >= 44 && box.left >= 0 && box.right <= 390 && box.owned)).toBe(true);
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    promptActionsAboveSettings(await phoneRows(page));
     await page.getByTestId("config-chip").click();
     await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
     await page.getByRole("option", { name: "Plan", exact: true }).click();
@@ -327,6 +349,8 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
     await expect(page.getByTestId("config-chip")).toContainText("OpenCode · Fast Free · Plan");
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     expect((await page.getByTestId("config-chip").boundingBox())?.width).toBeGreaterThan(300);
+    await page.locator(".composer").evaluate(async el => { await Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => undefined))); });
+    promptActionsAboveSettings(await phoneRows(page));
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByTestId("config-chip").click();
     const sheet = page.getByRole("dialog", { name: "Chat settings" });
