@@ -6,16 +6,17 @@ import { useSwipeDown } from "../gestures.js";
  * On a phone it is a bottom sheet (styles/phones.css): a handle on top, and a drag
  * down on the handle or the title closes it.
  */
-export function Dialog({
-  title,
-  onClose,
-  children,
-  className,
-}: {
+export function Dialog({ title, onClose, children, className, closeLocked = false, ownerRef, returnFocus }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  /** An awaited child mutation keeps its native modal owner until it settles. */
+  closeLocked?: boolean;
+  /** The caller animates measured geometry only within this one native dialog. */
+  ownerRef?: { current: HTMLDialogElement | null };
+  /** The invoker outside this dialog, when a nested view changes its original inner focus owner. */
+  returnFocus?: { current: HTMLElement | null };
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -25,8 +26,10 @@ export function Dialog({
   const deadline = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const closeLockedRef = useRef(closeLocked);
+  closeLockedRef.current = closeLocked;
   const finish = () => {
-    if (closing.current) return;
+    if (closing.current || closeLockedRef.current) return;
     closing.current = true;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { onCloseRef.current(); return; }
     setLeaving(true);
@@ -47,12 +50,13 @@ export function Dialog({
     return () => {
       ++deadline.current;
       el?.close();
-      if (previous?.isConnected) previous.focus();
+      if (returnFocus?.current?.isConnected) returnFocus.current.focus();
+      else if (previous?.isConnected) previous.focus();
     };
   }, []);
   return (
     <dialog
-      ref={ref}
+      ref={(element) => { ref.current = element; if (ownerRef) ownerRef.current = element; }}
       className={`dialog${className ? ` ${className}` : ""}${leaving ? " is-leaving" : ""}`}
       aria-label={title}
       inert={leaving || undefined}
@@ -69,7 +73,7 @@ export function Dialog({
           <div className="sheet-handle" aria-hidden="true" />
           <header className="dialog-head">
             <h2>{title}</h2>
-            <button type="button" className="icon-btn" aria-label="Close" onClick={finish}>
+            <button type="button" className="icon-btn" aria-label="Close" title={closeLocked ? "Close when saving finishes" : "Close"} aria-disabled={closeLocked || undefined} disabled={closeLocked} onClick={finish}>
               ✕
             </button>
           </header>

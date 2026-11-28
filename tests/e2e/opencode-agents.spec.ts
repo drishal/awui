@@ -4,6 +4,12 @@ import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { signInAndOpen, openCodeChat } from "./helpers.js";
 
+
+function assertPhase<T>(value: T | null, phase: string): T {
+  if (value === null) throw new Error(`Expected actual ${phase} motion evidence`);
+  return value;
+}
+
 interface FixtureState {
   createdAgents?: Array<string | null>;
   agentSwitches?: Array<{ sessionID: string; agent: string }>;
@@ -426,7 +432,12 @@ test("phone role selection applies before closing and keeps errors in the owning
     await expect(pane.locator(".config-pane-note")).toHaveText("Saving…");
     expect(fixture().createdAgents?.length ?? 0).toBe(agentsBeforeApply);
     expect(page.url()).toBe(chatBeforeApply);
-    await expect(page.locator(".config-choices button:not([disabled])")).toHaveCount(0);
+    await expect(pane.getByRole("button", { name: "Back to chat settings" })).toBeDisabled();
+    await expect(pane.getByRole("button", { name: "Close", exact: true })).toBeDisabled();
+    await expect(pane.locator("[role=option][aria-disabled=true]")).toHaveCount(3);
+    await page.keyboard.press("Escape");
+    await expect(pane).toBeVisible();
+    await expect(pane.getByRole("button", { name: "Close", exact: true })).toHaveAttribute("title", "Close when saving finishes");
     const emphasis = async (name: "Build" | "Plan" | "orchestrator") => pane.getByRole("option", { name, exact: true }).evaluate(el => ({
       selected: el.getAttribute("aria-selected"), disabled: el.getAttribute("aria-disabled"),
       opacity: getComputedStyle(el).opacity, background: getComputedStyle(el).backgroundColor,
@@ -456,7 +467,58 @@ test("phone role selection applies before closing and keeps errors in the owning
     await expect(pane.getByRole("option", { name: "orchestrator", exact: true })).toHaveAttribute("aria-selected", "false");
     await expect(page.getByText("Fixture role save failed", { exact: true })).toHaveCount(1);
     await pane.getByRole("button", { name: "Back to chat settings" }).click();
-    await expect(page.getByRole("dialog", { name: "Chat settings" })).toBeVisible();
+    await expect(pane).toBeVisible();
+    const snapshot = page.locator(".config-agent-pane.is-returning");
+    await expect.poll(() => snapshot.evaluate(root => root.getAnimations().some(run => run.id === "morph:pane"))).toBe(true);
+    const reverse = await snapshot.evaluate(root => {
+      const dialog = root.closest("dialog")!;
+      const body = dialog.querySelector<HTMLElement>(".dialog-body")!;
+      const leave = root.getAnimations().find(a => a.id === "morph:pane");
+      const size = body.getAnimations().find(a => a.id === "morph:pane-size");
+      if (!leave || !size) throw new Error("Expected genuine outgoing and sizing movement");
+      const before = body.getBoundingClientRect().height;
+      for (const run of [leave, size]) { run.pause(); run.currentTime = 40; }
+      const keyframes = (size.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
+      const from = Number.parseFloat(String(keyframes[0]?.height));
+      const target = Number.parseFloat(String(keyframes[1]?.height));
+      const range = document.createRange(); range.selectNodeContents(root);
+      const text = range.getBoundingClientRect(); const panel = dialog.getBoundingClientRect();
+      return {
+        at: leave.currentTime, opacity: Number(getComputedStyle(root).opacity), clip: getComputedStyle(root).clipPath,
+        labels: root.querySelectorAll(".permission-option-name").length,
+        selected: root.querySelector("[aria-selected=true] .permission-option-name")?.textContent,
+        owner: dialog.getAttribute("aria-label"), disabled: root.querySelector("[role=listbox]")?.getAttribute("aria-disabled"),
+        from, target, before, current: body.getBoundingClientRect().height,
+        roleInside: text.top >= panel.top && text.bottom <= panel.bottom,
+        futureButtons: root.querySelectorAll("[data-testid=model-picker]").length,
+      };
+    });
+    expect(reverse.labels).toBe(3);
+    expect(reverse.selected).toBe("Plan");
+    expect(reverse.at).toBe(40);
+    expect(reverse.clip).toBe("none");
+    expect(reverse.opacity).toBeCloseTo(0.747196, 5);
+    expect(reverse.owner).toBe("Primary agent");
+    expect(reverse.disabled).toBe("true");
+    expect(reverse.roleInside).toBe(true);
+    expect(reverse.futureButtons).toBe(0);
+    expect(Number.isFinite(reverse.from) && Number.isFinite(reverse.target)).toBe(true);
+    expect(reverse.target).toBeGreaterThan(reverse.from);
+    expect(reverse.current).toBeGreaterThan(reverse.from);
+    expect(reverse.current).toBeLessThan(reverse.target);
+    await snapshot.evaluate(async root => {
+      const dialog = root.closest("dialog")!;
+      const runs = [...root.getAnimations(), ...dialog.querySelector(".dialog-body")!.getAnimations()].filter(a => a.id === "morph:pane" || a.id === "morph:pane-size");
+      for (const run of runs) run.play();
+      await Promise.all(runs.map(a => a.finished.catch(() => undefined)));
+    });
+    await expect(snapshot).toHaveCount(0);
+    const settings = page.getByRole("dialog", { name: "Chat settings" });
+    await expect(settings.getByTestId("agent-picker")).toBeFocused();
+    await expect(page.getByText("Fixture role save failed", { exact: true })).toHaveCount(0);
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    await expect(page.getByRole("dialog", { name: "Primary agent", exact: true })).toBeVisible();
+    await expect(page.locator(".config-error")).toHaveCount(0);
   } finally { await context.close(); }
 });
 
@@ -465,23 +527,28 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   await openCodeChat(page);
   const trigger = page.getByTestId("model-picker");
   const pop = page.locator(".model-pop");
-  const phase = async (t: number) => {
-    await expect.poll(() => pop.evaluate(el => el.getAnimations().some(a => a.id === "morph:popup")), { timeout: 5_000 }).toBe(true);
-    return pop.evaluate((el, at) => {
-      const run = el.getAnimations().find(a => a.id === "morph:popup");
-      if (!run) throw new Error("Expected the actual model morph animation");
-      run!.pause(); run!.currentTime = at;
-      const box = el.getBoundingClientRect();
-      const parts = [...el.querySelectorAll<HTMLElement>(".model-name,.model-tag,.model-check")].map(part => {
-        const r = part.getBoundingClientRect();
-        return { text: part.textContent, inside: r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom };
-      });
-      if (run.playState === "paused") run.play();
-      return { clip: getComputedStyle(el).clipPath, opacity: Number(getComputedStyle(el).opacity), width: box.width, height: box.height, parts };
-    }, t);
+  const phase = async (t: number, leaving: boolean) => {
+    const facts = await page.waitForFunction(({ phase, at }) => {
+      const panel = document.querySelector<HTMLElement>(".model-pop");
+      if (!panel || panel.classList.contains("is-leaving") !== phase || (phase && panel.dataset.morph !== "leaving")) return null;
+      const run = panel.getAnimations().find(animation => animation.id === "morph:popup");
+      if (!run) return null;
+      run.pause(); run.currentTime = at;
+      const box = panel.getBoundingClientRect();
+      const result = {
+        clip: getComputedStyle(panel).clipPath, opacity: Number(getComputedStyle(panel).opacity), width: box.width, height: box.height,
+        parts: [...panel.querySelectorAll<HTMLElement>(".model-name,.model-tag,.model-check")].map(part => {
+          const r = part.getBoundingClientRect();
+          return { text: part.textContent, inside: r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom };
+        }),
+      };
+      run.play();
+      return result;
+    }, { phase: leaving, at: t }, { polling: "raf", timeout: 5_000 });
+    try { return await assertPhase(await facts.jsonValue(), leaving ? "model closing" : "model opening"); } finally { await facts.dispose(); }
   };
   await trigger.click();
-  const opening = await phase(40);
+  const opening = await phase(40, false);
   expect(opening.clip).toBe("none");
   expect(opening.opacity).toBeGreaterThanOrEqual(0.72);
   expect(opening.parts.every(part => part.inside)).toBe(true);
@@ -489,7 +556,7 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   await pop.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
   await pop.screenshot({ path: "test-results/model-motion-rest.png" });
   await page.keyboard.press("Escape");
-  const closing = await phase(40);
+  const closing = await phase(40, true);
   expect(closing.clip).toBe("none");
   expect(closing.opacity).toBeGreaterThanOrEqual(0.72);
   expect(closing.width).toBe(opening.width);
@@ -503,4 +570,149 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   expect(await pop.getAttribute("data-morph")).toBeNull();
   expect(await pop.evaluate(el => el.getAnimations().length)).toBe(0);
   expect(await pop.evaluate(el => getComputedStyle(el).clipPath)).toBe("none");
+});
+
+
+test("the desktop handoff names its action and opens the real native choices", async ({ page }) => {
+  await openCodeChat(page);
+  const trigger = page.getByRole("button", { name: "Hand off to another harness", exact: true });
+  await expect(trigger).toContainText("OpenCode");
+  await expect(trigger.locator(".icon")).toBeVisible();
+  await expect(trigger).toHaveAttribute("title", /fresh native session/);
+  const label = trigger.locator(".harness-row-name");
+  expect(await label.evaluate(el => ({ position: getComputedStyle(el).position, width: el.getBoundingClientRect().width }))).toEqual({ position: "static", width: expect.closeTo(65.59375, 1) });
+  await expect(trigger).toContainText(/^OpenCode$/);
+  await trigger.click();
+  const menu = page.getByRole("listbox", { name: "Hand off to" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Fake", exact: true })).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Fake B", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
+test("phone handoffs stay disabled while a model configuration applies", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByTestId("config-chip").click();
+    let release!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    let seen = false;
+    await page.route("**/api/chats/*/config", async route => { seen = true; await hold; await route.continue(); });
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("model-picker").click();
+    await page.getByRole("option", { name: "Plain", exact: true }).click();
+    await expect.poll(() => seen).toBe(true);
+    const sheet = page.getByRole("dialog", { name: "Chat settings" });
+    await expect(sheet.locator(".config-pane-note")).toHaveText("Saving…");
+    await expect(sheet.locator(".config-choices button")).toHaveCount(3);
+    await expect(sheet.locator(".config-choices button:not([disabled])")).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Close", exact: true })).toBeDisabled();
+    release();
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByTestId("config-chip")).toContainText("Plain");
+  } finally { await context.close(); }
+});
+
+test("coarse secondary model controls are thumb-sized", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByTestId("config-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Chat settings" });
+    await expect(sheet).toBeVisible();
+    await sheet.getByTestId("model-picker").click();
+    const pop = page.getByRole("dialog", { name: "Choose a model" });
+    await expect(pop).toBeVisible();
+    await pop.evaluate(async root => { await Promise.all(root.getAnimations({ subtree: true }).map(a => a.finished.catch(() => undefined))); });
+    for (const item of await pop.locator(".model-refresh,.model-option").evaluateAll(rows => rows.map(row => {
+      const r = row.getBoundingClientRect();
+      return { width: r.width, height: r.height, owned: row.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+    }))) {
+      expect(item.width).toBeGreaterThanOrEqual(44);
+      expect(item.height).toBeGreaterThanOrEqual(44);
+      expect(item.owned).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+    expect(await sheet.evaluate(el => ({ bodyInert: el.hasAttribute("inert"), containsFocus: el.contains(document.activeElement) }))).toEqual({ bodyInert: false, containsFocus: true });
+  } finally { await context.close(); }
+});
+
+
+test("a Back during role-pane entry waits its owner instead of starting a competing reverse", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByTestId("config-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Chat settings" });
+    await sheet.getByTestId("agent-picker").click();
+    const root = page.locator(".config-agent-pane");
+    await expect(page.getByRole("dialog", { name: "Primary agent", exact: true })).toBeVisible();
+    await expect.poll(() => root.evaluate(el => el.getAnimations().some(a => a.id === "morph:pane"))).toBe(true);
+    await root.evaluate(el => {
+      const entry = el.getAnimations().find(a => a.id === "morph:pane");
+      if (!entry) throw new Error("no real live entry");
+      entry.pause();
+    });
+    // Repeated Escape before React commits returning cannot create a second same-owner leave.
+    await root.getByRole("listbox", { name: "Primary agent" }).press("Escape");
+    await root.getByRole("listbox", { name: "Primary agent" }).press("Escape");
+    await expect(root).toHaveClass(/is-returning/);
+    const ownedEntries = await root.evaluate(el => el.getAnimations().filter(animation => animation.id === "morph:pane").length);
+    expect(ownedEntries).toBe(1);
+    await root.evaluate(async el => {
+      const entry = el.getAnimations().find(a => a.id === "morph:pane");
+      if (!entry) throw new Error("lost the original entrance");
+      entry.play(); await entry.finished;
+    });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId("agent-picker")).toBeFocused();
+    await expect(root).toHaveCount(0);
+  } finally { await context.close(); }
+});
+
+test("reduced motion returns role settings directly with no live pane or size morph", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, reducedMotion: "reduce" });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByTestId("config-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Chat settings" });
+    await sheet.getByTestId("agent-picker").click();
+    const root = page.locator(".config-agent-pane");
+    expect(await root.evaluate(el => el.getAnimations().length)).toBe(0);
+    await page.getByRole("button", { name: "Back to chat settings" }).click();
+    await expect(sheet.getByTestId("agent-picker")).toBeFocused();
+    expect(await page.locator("dialog").evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
+    expect(await page.locator(".config-agent-pane").count()).toBe(0);
+    expect(await sheet.locator(".dialog-body").evaluate(el => el.style.height)).toBe("");
+  } finally { await context.close(); }
+});
+
+
+test("closing during an outgoing role transition returns to the actual settings invoker", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByTestId("config-chip").click();
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
+    await expect(pane).toBeVisible();
+    await pane.evaluate(async root => { await Promise.all(root.getAnimations({ subtree: true }).map(a => a.finished.catch(() => undefined))); });
+    await pane.getByRole("button", { name: "Back to chat settings" }).click();
+    const outgoing = page.locator(".config-agent-pane.is-returning");
+    await expect.poll(() => outgoing.evaluate(el => el.getAnimations().some(a => a.id === "morph:pane"))).toBe(true);
+    await outgoing.evaluate(el => { for (const a of el.getAnimations()) a.pause(); });
+    // The outgoing motion remains unsatisfied. Native close must cancel, not await a fake complete Back.
+    await pane.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(pane).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Chat settings" })).toHaveCount(0);
+    await expect(outgoing).toHaveCount(0);
+    await expect(page.getByTestId("config-chip")).toBeFocused();
+  } finally { await context.close(); }
 });

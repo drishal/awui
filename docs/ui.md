@@ -317,7 +317,7 @@ a literal colour.
   stay grey. Never colour alone: glyph, word, and shape stay.
 - **The composer's chip row:** the agent, model, and thinking controls are actual
   native triggers, not one link that shares a chevron; model and thinking sit in
-  one neutral sentence beside a quiet harness mark for an exceptional handoff.
+  one neutral sentence beside a **named harness chip with its own chevron** for an exceptional handoff.
   `model-morph.ts` (`morphShift` and `usePopupMorph`) gives all these surfaces a
   190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
   The complete panel, heading, choices and selection check remain laid out at
@@ -325,7 +325,8 @@ a literal colour.
   Opening begins at 0.72 opacity to keep the words readable during the short glide.
   The CSS fallback follows the same small rise and opacity without an inherited clip wipe.
   The phone's role sub-pane has the same modest composed entrance within its one
-  owning native dialog—not a second sheet.
+  owning native dialog—not a second sheet. Back leaves the current role root briefly,
+  then the shared `Dialog` eases its measured body height to settings and restores focus.
   Only detached harness menus carry the generic `harness-menu` motion style.
   Within the native role pane, `AgentOptions` uses shared option-row styles; a
   detached-menu class would also apply an unwanted second spring/clip. Its
@@ -336,8 +337,10 @@ a literal colour.
   Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
   it as a sub-pane of the existing native dialog, with Back and focus restoration,
   A setting waits for its native apply. Other configuration controls and handoffs
-  stay disabled until the request settles; a failure stays in the awaiting pane
-  as its one error announcement, with Back available. Desktop nonblocking changes
+  stay disabled until the request settles. `closeLocked` also guards Back, Escape, Close,
+  and swiping the native dialog while applying. A late completion cannot change owners.
+  Close restores the composer settings invoker even if it hid its previous inner focus owner.
+  A failure stays in the awaiting pane as its one error announcement; Back clears it.
   use `onConfigError` for their original single failure notice rather than creating
   duplicate inline and global error messages.
   instead of floating a second sheet over its parent. Common choices lead; the

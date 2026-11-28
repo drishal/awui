@@ -35,6 +35,7 @@ function HandoffChip({ chat, harnesses, onHandoff }: { chat: ChatState; harnesse
       currentId={chat.harnessId}
       choices={current ? [{ harness: current, blocked: "This chat's harness" }, ...choices] : choices}
       triggerText={pending ? "Handing off…" : undefined}
+      hint={`Hand this chat off from ${current?.displayName ?? chat.harnessId}; it starts a fresh native session without a second writer.`}
       disabled={pending || chat.status === "disposed" || choices.every((c) => c.blocked !== null)}
       onPick={(id) => {
         if (id === chat.harnessId) return;

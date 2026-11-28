@@ -48,7 +48,7 @@ export const AgentOptions = forwardRef<HTMLDivElement, {
       {agents.map((agent, i) => (
         <div key={agent.id} id={`${id}-${i}`} role="option" aria-label={agent.label} aria-describedby={agent.description ? `${id}-${i}-desc` : undefined} aria-selected={agent.id === current}
           className={`permission-option${i === active ? " is-active" : ""}${pane ? " is-pane" : ""}`}
-          onMouseMove={() => setActive(i)} aria-disabled={disabled || undefined} onClick={() => { if (!disabled) onSelect(agent.id); }}>
+          onMouseMove={() => !leaving && setActive(i)} aria-disabled={disabled || undefined} onClick={() => { if (!disabled && !leaving) onSelect(agent.id); }}>
           <span className="permission-option-text">
             <span className="permission-option-name">{agent.label}</span>
             {agent.description ? <span id={`${id}-${i}-desc`} className="permission-option-desc">{agent.description}</span> : null}

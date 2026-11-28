@@ -155,9 +155,9 @@ export function HarnessMenu({
             </span>
             {/* The chevron is the name's neighbour, not the row's right end: 4px from it, inside the label. */}
             <span className="harness-label">
-              <span className="harness-row-name">{name}</span>
+              <span className="harness-row-name">{variant === "chip" ? (current?.displayName ?? currentId ?? "Choose a harness") : name}</span>
               {/* A lone harness's static title gets no affordance of a picker. */}
-              {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
+              {!staticLabel ? <IconChevronDown size={12} /> : null}
             </span>
           </>
         )}

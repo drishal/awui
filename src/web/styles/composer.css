@@ -865,23 +865,22 @@
   border-radius: var(--r-control);
 }
 
-/* The harness's name belongs to the chat header and the sidebar; in this row the mark stands for it.
-   It stays in the button, so the chip is still named for a screen reader. */
+/* This is a command, not just the chat's logo: name the harness and expose the menu affordance. */
 .composer-pill .harness-menu-wrap > button.harness-chip {
-  width: 30px;
-  padding: 0;
-  justify-content: center;
+  max-width: 180px;
+  padding: 0 8px 0 10px;
+  justify-content: flex-start;
   border-radius: var(--r-control) 0 0 var(--r-control);
 }
 
+.composer-pill .harness-label { min-width: 0; }
 .composer-pill .harness-row-name {
-  position: absolute;
-  width: 1px;
-  height: 1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Handoff changes sessions rather than the model sentence. Keep a gap between that action and model choices. */
+.composer-pill .harness-menu-wrap > .harness-menu { margin-left: -110px; }
 
 .composer-pill-settings {
   display: inline-flex;

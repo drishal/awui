@@ -872,10 +872,13 @@ button.harness-chip:disabled {
 .agent-menu.is-pane { animation: none; }
 .agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
 .config-back { margin: 0 0 8px; padding: 4px 0; }
-/* Current selection is not the keyboard-focus fill. The small left rule and check keep those
- * two independent states distinguishable without inventing a third badge. */
-.agent-menu .permission-option[aria-selected="true"] {
-  box-shadow: inset 2px 0 0 var(--accent);
+
+/* Leaving role choices cannot select a second option during their 120 ms return. */
+.agent-menu.is-leaving { pointer-events: none; }
+.config-agent-pane.is-returning { pointer-events: none; }
+@media (pointer: coarse) {
+  .model-search .model-refresh { width: 44px; height: 44px; margin-right: -10px; }
+  .model-option {  min-height: 44px; }
 }
 
 /* Keep the group name available when a longer role catalogue scrolls to its current choice. */
@@ -886,7 +889,7 @@ button.harness-chip:disabled {
   background: var(--card);
 }
 
-/* The native pane already has its own heading and selected-row fill. */
+/* Current selection has stronger fill than the quiet keyboard focus shape. */
 /* Current and attempted roles never share selection emphasis. The native pane
  * keeps its checked/filled current role while a different choice is in flight. */
 .agent-menu .permission-option[aria-selected="true"] {
@@ -910,10 +913,8 @@ button.harness-chip:disabled {
 .composer-pickers > .model-picker > .effort-pop,
 .composer-pill-settings > .model-picker > .effort-pop,
 .composer-policy > .model-picker > .permission-menu { bottom: calc(100% + 8px); max-height: min(440px, 55dvh); }
-/* The panel grows out of its chip: measured from the chip's rect where the Web Animations API runs
-   (model-morph.ts sets data-morph and uncovers from there), else from the chip's corner via the keyframes
-   below. Either way it fades in as a clip uncovers it, and closing furls it back into that corner.
-   A phone's sheet is uncovered from its pill the same way (motion.css turns its rise off then). */
+/* The measured WAAPI path and fallback both retain whole laid-out content during
+ * a short facing-axis translate and opacity change. There is no text wipe. */
 @media (min-width: 820px) {
   .model-picker .model-pop:not([data-morph]) {
     transform-origin: bottom left;
