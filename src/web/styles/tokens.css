@@ -508,11 +508,8 @@ h3,
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
   *::backdrop {
-    animation: none !important;
-    transition: none !important;
-  }
     animation: none !important;
     transition: none !important;
   }

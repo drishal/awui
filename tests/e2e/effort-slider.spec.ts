@@ -298,3 +298,26 @@ test("the bead has its shadow layer: sized, with a shadow and a hairline", async
   expect(shadow.width).toBeGreaterThanOrEqual(19);
   expect(shadow.boxShadow).not.toBe("none");
 });
+
+
+test("the keyboard ring uses the theme accent, leaving a system colour to forced colors", async ({ page }) => {
+  await openPicker(page);
+  const accent = await slider(page).evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--accent)";
+    el.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  // Establish keyboard modality and a genuine visible keyboard focus before reopening.
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toHaveCount(0);
+  await page.getByTestId("thinking-picker").focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => slider(page).evaluate((el) => document.activeElement === el && el.matches(":focus-visible"))).toBe(true);
+  expect(await slider(page).evaluate((el) => getComputedStyle(el).outlineColor)).toBe(accent);
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect(slider(page)).toBeFocused();
+  expect(await slider(page).evaluate((el, expected) => getComputedStyle(el).outlineColor !== expected && getComputedStyle(el).outlineWidth === "2px", accent)).toBe(true);
+});

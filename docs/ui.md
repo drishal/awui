@@ -287,12 +287,13 @@ a literal colour.
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat
   title, dialog titles, the start screen) take `--tracking-tight`.
-- **Control sizes:** the composer's row is 32 px tall on every screen, its
-  chips and icon buttons at `--r-control`, and Send a round 40 px (the row's one
-  control a size larger; the composer is the exception to `phones.css` raising
-  touch targets to 36–44 px elsewhere: a phone keeps its one slim row at 32 px,
-  and its folded card still names the model and the level in the settings chip,
-  which opens the chat-settings sheet).
+- **Control sizes:** the composer's row is 32 px tall on desktop, its
+  chips and icon buttons at `--r-control`, and Send a round 40 px. On a phone
+  the core attachment, settings, context and Send controls are at least 44 px.
+  The folded card has a prompt/action row above a full-width settings row;
+  the complete model, role and effort fit without cutting a word into fragments.
+  The compact choice can use two short lines when expanded. The sheet opens
+  the chat settings and retains a native Back/focus path.
   Keep a row of controls one height: mismatched heights and radii are what makes a
   part "look off".
 - **Motion:** short and eased out; `prefers-reduced-motion` turns it all off
@@ -316,11 +317,12 @@ a literal colour.
 - **The composer's chip row:** the agent, model, and thinking controls are actual
   native triggers, not one link that shares a chevron; model and thinking sit in
   one neutral sentence beside a quiet harness mark for an exceptional handoff.
-  `model-morph.ts` (`morphClip` and `usePopupMorph`) gives all these surfaces the
-  same 190 ms reveal from the actual trigger, and a 120 ms return on dismissal,
-  while the trigger's arrow doesn't resize the working row. The panel's containing
-  block supplies the measurements: input text is never stretched or obscured by
-  a surface growing from somewhere else. Reduced motion shows the values at once.
+  `model-morph.ts` (`morphShift` and `usePopupMorph`) gives all these surfaces a
+  190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
+  The complete panel, heading, choices and selection check remain laid out at
+  full size throughout; the glide does not slice words or scale the text. The
+  panel's containing block supplies the placement, above the prompt, and a short
+  measured travel expresses the trigger's direction without covering input.
   `AgentOptions.tsx` owns the one focused primary-role list (arrows, Home, End,
   Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
   it as a sub-pane of the existing native dialog, with Back and focus restoration,

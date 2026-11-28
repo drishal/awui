@@ -46,12 +46,12 @@ export const AgentOptions = forwardRef<HTMLDivElement, {
       style={shift ? { left: shift } : undefined} onKeyDown={onKeyDown}>
       <div className="harness-menu-head">{!pane ? "Primary agent" : null}</div>
       {agents.map((agent, i) => (
-        <div key={agent.id} id={`${id}-${i}`} role="option" aria-label={agent.label} aria-selected={agent.id === current}
+        <div key={agent.id} id={`${id}-${i}`} role="option" aria-label={agent.label} aria-describedby={agent.description ? `${id}-${i}-desc` : undefined} aria-selected={agent.id === current}
           className={`permission-option${i === active ? " is-active" : ""}${pane ? " is-pane" : ""}`}
           onMouseMove={() => setActive(i)} aria-disabled={disabled || undefined} onClick={() => { if (!disabled) onSelect(agent.id); }}>
           <span className="permission-option-text">
             <span className="permission-option-name">{agent.label}</span>
-            {agent.description ? <span className="permission-option-desc">{agent.description}</span> : null}
+            {agent.description ? <span id={`${id}-${i}-desc`} className="permission-option-desc">{agent.description}</span> : null}
           </span>
           {agent.id === current ? <IconCheck size={13} className="harness-option-check" /> : null}
         </div>

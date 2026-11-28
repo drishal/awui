@@ -393,6 +393,7 @@
 }
 
 .composer-input {
+  --composer-hint-text: color-mix(in srgb, var(--muted) 75%, var(--text-2));
   display: block;
   width: 100%;
   min-height: 26px;
@@ -436,7 +437,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted-text);
+  color: var(--composer-hint-text, var(--muted-text));
   pointer-events: none;
 }
 
@@ -583,13 +584,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A phone: one row under the input — a + for the images, the chat's pill
-   (which opens the chat-settings sheet), and on the right the context ring
-   and a round Send/Stop. The capture button is a desktop affordance (there
-   is no window to grab); the pickers (the desktop's chips) stay hidden
-   behind the one pill. The whole row stays slim (32 px targets, a 32 px
-   pill): the 44 px touch guidelines are traded for one-handed reach, as the
-   phone chat apps do. */
+/* A phone keeps the first row for the prompt, attachment, context and Send.
+ * Its settings chip can use two short lines rather than cutting a word halfway. */
 @media (max-width: 600px) {
   .composer-card {
     padding-top: 6px;
@@ -610,17 +606,14 @@
     gap: 4px;
     margin-top: 2px;
   }
-
-  /* Slim the big touch targets of phones.css and responsive.css inside this
-     one row: 32 px each, the size of the desktop row, so the card reads as
-     one line of controls rather than a strip of buttons. */
+  /* One compact row, with genuine 44px touch targets and no overlapping hit areas. */
   .composer-bar .composer-attach,
   .composer-bar .stash .icon-btn,
   .composer-bar .round-btn {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    min-height: 32px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
   }
 
   .composer-bar .composer-attach {
@@ -692,22 +685,30 @@
     min-width: 0;
     width: auto;
     max-width: 40vw;
-    height: 32px;
-    min-height: 32px;
+    height: 44px;
+    min-height: 44px;
     justify-content: center;
     border-radius: var(--r-control);
   }
+  /* Expanded controls have a bounded second line for a long configuration, not a mid-word crop. */
+  .composer-controls .composer-config-chip .config-summary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
 }
 
-/* Folded to one row (composer-fold.ts, Claude's app): the card is a pill — a
-   filled round +, the box's placeholder line, the context ring as the chip,
-   and the round Send. The bar's children rejoin the card's own row
-   (display: contents), so useMorph measures the box, + and Send on both sides
-   of the fold and glides them. Tapping the box focuses it and the card opens,
-   so the fold needs no toggle of its own. */
+/* Folded on a phone (composer-fold.ts): a prompt/action row plus one full-width
+ * settings row. The bar's children rejoin the card (display: contents), so
+ * useMorph measures the box, + and Send across the fold and glides them.
+ * Tapping the box focuses it; no separate fold toggle is needed. */
 @media (max-width: 600px) {
   .composer-card.is-folded {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
@@ -725,7 +726,7 @@
        folded placeholder ("Message…", 74px at this size) with air around it, so the box never cuts the words
        into an ellipsis the reader has to guess at. */
     min-width: 112px;
-    min-height: 32px;
+    min-height: 44px;
     padding: 6px 2px;
     /* One line's worth: the placeholder sets the row's height. */
     line-height: 20px;
@@ -806,8 +807,28 @@
   /* The ring keeps its measure (it's inside the actions, not a morph part):
      it reads as the row's chip, and still opens its usage popover. */
   .composer-card.is-folded .context-ring {
-    height: 28px;
+    min-width: 44px;
+    height: 44px;
     padding: 0 4px;
+  }
+  /* The folded card has a generous settings row below the prompt row, not a
+   * synonym-chopping chip competing with the placeholder and Send. */
+  .composer-card.is-folded .composer-controls .pill-trigger.composer-config-chip {
+    order: 3;
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: none;
+    height: 44px;
+    justify-content: flex-start;
+    padding: 0 12px;
+  }
+
+  .composer-card.is-folded .composer-config-chip .config-summary {
+    display: block;
+    flex: 1;
+    white-space: normal;
+    line-height: 1.2;
+    text-overflow: clip;
   }
 }
 

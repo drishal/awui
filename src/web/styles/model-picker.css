@@ -203,7 +203,9 @@
 /* The model's reasoning ceiling ("up to high"): quiet grey text, not a pill in the effort hue. In the
    thinking colour it read as the level in force, which is the composer's own "· Low" beside it. */
 .model-tag {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-left: auto;
   padding: 0;
   color: var(--muted-text);
@@ -467,8 +469,7 @@
   cursor: grabbing;
 }
 
-/* Reduced motion is implemented by startSprings: no rAF, no independent wetting front, and the bead rests
-   on its selected stop. The paths remain present, but they never animate under this mode. */
+@media (forced-colors: active) {
   .effort-ripple {
     background: Highlight;
   }
@@ -476,7 +477,7 @@
   .effort-slider:focus-visible {
     outline: 2px solid Highlight;
   }
-
+}
 .model-empty {
   padding: 18px 10px;
   text-align: center;
@@ -847,6 +848,25 @@ button.harness-chip:disabled {
 .agent-menu.is-pane { position: static; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; background: none; box-shadow: none; }
 .agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
 .config-back { margin: 0 0 8px; padding: 4px 0; }
+/* Current selection is not the keyboard-focus fill. The small left rule and check keep those
+ * two independent states distinguishable without inventing a third badge. */
+.agent-menu .permission-option[aria-selected="true"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Keep the group name available when a longer role catalogue scrolls to its current choice. */
+.agent-menu:not(.is-pane) .harness-menu-head {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  background: var(--card);
+}
+
+/* The native pane already has its own heading and selected-row fill. */
+.agent-menu.is-pane .permission-option[aria-selected="true"] {
+  box-shadow: none;
+}
+
 /* Back and choices share the sheet's readable left edge and a real thumb-sized tap row. */
 .config-back { min-height: 44px; }
 .config-agent-pane .agent-menu.is-pane { margin-inline-start: -6px; }

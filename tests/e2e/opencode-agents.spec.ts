@@ -12,7 +12,7 @@ interface FixtureState {
 }
 const fixture = () => JSON.parse(readFileSync(process.env.AWUI_OPENCODE_STATE as string, "utf8")) as FixtureState;
 
-async function openCodeChat(page: Page) {
+export async function openCodeChat(page: Page) {
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = await (await page.request.post("/api/workspaces/open", { data: { path: `${root}/alpha` } })).json() as { id: string };
   const chat = await (await page.request.post("/api/chats", { data: { harnessId: "opencode", workspaceId: ws.id } })).json() as { chatId: string };
@@ -244,4 +244,91 @@ test("Escape returns a thinking control's focus without inventing a state change
   await expect(page.getByRole("combobox", { name: "Search models" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("model-picker")).toBeFocused();
+});
+
+
+test("the role surface keeps its labels and selection intact throughout its morph", async ({ page }) => {
+  await openCodeChat(page);
+  await page.getByRole("textbox", { name: "Message" }).fill("ticking");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("answer").last()).toContainText("Echo: ticking", { timeout: 15_000 });
+  await page.getByTestId("agent-picker").click();
+  const menu = page.getByRole("listbox", { name: "Primary agent" });
+  await expect(menu).toBeFocused();
+  await expect(menu.getByRole("option", { name: "Build", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(menu.getByRole("option", { name: "Build", exact: true }).locator(".harness-option-check")).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-describedby", /-2-desc$/);
+  await expect(menu.getByRole("option", { name: "Plan", exact: true })).toHaveAccessibleDescription("Read-only planning");
+  const sample = async (at: number) => {
+    await menu.evaluate((el, t) => {
+      const run = el.getAnimations().find((a) => a.id === "morph:popup");
+      if (!run) throw new Error("missing measured popup motion");
+      run.pause();
+      run.currentTime = t;
+    }, at);
+    const result = await menu.evaluate((el) => {
+      const edge = el.getBoundingClientRect();
+      const range = document.createRange();
+      const options = [...el.querySelectorAll<HTMLElement>("[role=option]")];
+      return {
+        clip: getComputedStyle(el).clipPath,
+        transform: getComputedStyle(el).transform,
+        labels: options.map((option) => {
+          const line = option.querySelector<HTMLElement>(".permission-option-name")!;
+          range.selectNodeContents(line);
+          const r = range.getBoundingClientRect();
+          const check = line.nextElementSibling ? null : option.querySelector<HTMLElement>(".harness-option-check");
+          const box = check?.getBoundingClientRect();
+          return {
+            text: line.textContent, selected: option.getAttribute("aria-selected"),
+            inside: r.left >= edge.left && r.right <= edge.right && r.top >= edge.top && r.bottom <= edge.bottom,
+            checkInside: !box || (box.left >= edge.left && box.right <= edge.right && box.top >= edge.top && box.bottom <= edge.bottom),
+          };
+        }),
+      };
+    });
+    expect(result.clip).toBe("none");
+    expect(result.transform).toMatch(/^matrix\(1, 0, 0, 1, 0(?:\.0+)?, /);
+    expect(result.labels).toHaveLength(3);
+    expect(result.labels.every((line) => line.inside && line.checkInside)).toBe(true);
+    expect(result.labels.filter((line) => line.selected === "true").map((line) => line.text)).toEqual(["Build"]);
+  };
+  for (const at of [40, 90, 140]) await sample(at);
+  await menu.getByRole("option", { name: "Plan", exact: true }).click();
+  await expect(page.getByTestId("agent-picker")).toHaveAccessibleName("Agent: Plan");
+  await menu.waitFor({ state: "detached" });
+});
+
+test("the phone shows the full summary with non-overlapping 44px core controls", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByRole("textbox", { name: "Message" }).fill("ticking");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByTestId("answer").last()).toContainText("Echo: ticking", { timeout: 15_000 });
+    await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Build · Default");
+    const boxes = await page.locator(".composer-card").evaluate((card) => [...card.querySelectorAll<HTMLElement>(".composer-attach,.composer-input,.composer-config-chip,.context-ring,.round-btn")].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { name: el.className, width: r.width, height: r.height, left: r.left, right: r.right, owned: el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+    }));
+    expect(boxes.length).toBeGreaterThanOrEqual(5);
+    expect(boxes.every((box) => box.width >= 44 && box.height >= 44 && box.left >= 0 && box.right <= 390 && box.owned)).toBe(true);
+    expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.getByTestId("config-chip").click();
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    await page.getByRole("option", { name: "Plan", exact: true }).click();
+    await page.getByRole("dialog", { name: "Primary agent", exact: true }).waitFor({ state: "detached" });
+    await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Plan · Default");
+    await expect(page.getByTestId("config-chip")).toHaveAccessibleName("Fast Free · Plan · Default");
+    expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByTestId("config-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Chat settings" });
+    await expect(sheet).toBeVisible();
+    expect(await sheet.evaluate((el) => getComputedStyle(el, "::backdrop").animationName)).toBe("none");
+    expect(await sheet.evaluate((el) => el.getAnimations().length)).toBe(0);
+  } finally {
+    await context.close();
+  }
 });

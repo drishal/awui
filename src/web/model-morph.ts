@@ -1,31 +1,42 @@
-// Model, agent, effort, and permission popovers use this measured reveal. Pure
-// geometry and one small hook: clip the surface toward its actual trigger, never
-// from an unrelated corner, and keep labels sharp (no text scaling or blurring).
+// Model, agent, effort, and permission popovers use a measured glide. Pure
+// geometry and one small hook reveal the whole surface toward its trigger's
+// facing edge, without wiping through words or scaling/blurring the text.
 import { useLayoutEffect, type RefObject } from "react";
 import { motionOff } from "./morph.js";
 
 /** A choice surface opens quickly and closes a little more quickly; neither springs the labels. */
 export const POPUP_ENTER_MS = 190;
 export const POPUP_LEAVE_MS = 120;
-export interface Box { top: number; left: number; right: number; bottom: number; }
+export interface Box { top: number; left: number; right: number; bottom: number }
 
-/** Project the trigger into the panel's local box. A wholly external axis gives
- * a facing-edge reveal. Clamping every side at zero would instead reveal from
- * the opposite edge when a tall model surface sits entirely above its trigger. */
-export function morphClip(chip: Box, panel: Box): string {
-  const edge = (a: number): string => `${a}px`;
-  const below = chip.top >= panel.bottom;
+/** A short, measured travel in the trigger's direction. A panel anchored below
+ * rises; one above settles down. A wholly side-adjacent trigger gives horizontal
+ * travel. With an overlapping trigger there is no invented corner or direction. */
+export function morphShift(chip: Box, panel: Box): { x: number; y: number } {
   const above = chip.bottom <= panel.top;
-  const top = below ? "100%" : above ? "0px" : edge(Math.max(0, chip.top - panel.top));
-  const right = chip.left >= panel.right ? "0px" : chip.right <= panel.left ? "100%" : edge(Math.max(0, panel.right - chip.right));
-  const bottom = below ? "0px" : above ? "100%" : edge(Math.max(0, panel.bottom - chip.bottom));
-  const left = chip.right <= panel.left ? "0px" : chip.left >= panel.right ? "100%" : edge(Math.max(0, chip.left - panel.left));
-  return `inset(${top} ${right} ${bottom} ${left})`;
+  const below = chip.top >= panel.bottom;
+  const left = chip.right <= panel.left;
+  const right = chip.left >= panel.right;
+  const inRow = chip.left < panel.right && chip.right > panel.left;
+  const inColumn = chip.top < panel.bottom && chip.bottom > panel.top;
+  if (inRow && inColumn) return { x: 0, y: 0 };
+  if (left && !above && !below || right && !above && !below) return inColumn ? { x: left ? 12 : -12, y: 0 } : { x: 0, y: 0 };
+  if ((above || below) && inRow) return { x: 0, y: above ? -12 : 12 };
+  let dx = 0;
+  let dy = 0;
+  if (left) dx = panel.left - chip.right;
+  else if (right) dx = chip.left - panel.right;
+  if (above) dy = panel.top - chip.bottom;
+  else if (below) dy = chip.top - panel.bottom;
+  if (dx > 0 && (dy === 0 || dx < dy)) return { x: left ? 12 : -12, y: 0 };
+  if (dy > 0) return { x: 0, y: above ? -12 : 12 };
+  return { x: 0, y: 0 };
 }
 
-/** Open and close with the same measured anchor. Motion off does no WAAPI work.
- * `visible` stays true during the owner's leave, so rerendering can cancel a
- * current glide and reverse it without a jump in the panel or arrow key focus. */
+/** Open and close along the same facing edge. The entire panel, its heading,
+ * choices and selection check remain laid out at full size throughout the glide;
+ * none is bisected by an animated crop. Motion off does no WAAPI work. `visible`
+ * stays true during the owner's leave, so reopening cancels a glide without a jump. */
 export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>, visible: boolean, leaving: boolean): void {
   useLayoutEffect(() => {
     if (!visible) return;
@@ -33,7 +44,7 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     const chip = trigger.current;
     if (!face || !chip) return;
     // Use the real containing block for position, not a presumed parent or viewport.
-    // The trigger stays in view under its surface, while the whole popup stays above the prompt.
+    // The message stays uncovered: the popover parks above the card and approaches its facing edge.
     const card = chip.closest<HTMLElement>(".composer");
     if (card && getComputedStyle(face).position !== "fixed") {
       const owner = face.offsetParent instanceof HTMLElement ? face.offsetParent : null;
@@ -54,11 +65,15 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     }
     const a = face.getBoundingClientRect();
     const b = chip.getBoundingClientRect();
-    const from = morphClip({ top: b.top - a.top, left: b.left - a.left, right: b.right - a.left, bottom: b.bottom - a.top }, { top: 0, left: 0, right: a.width, bottom: a.height });
-    const open = { clipPath: "inset(-24px)", opacity: "1" };
-    const closed = { clipPath: from, opacity: "0.65" };
+    const shift = morphShift({ top: b.top - a.top, left: b.left - a.left, right: b.right - a.left, bottom: b.bottom - a.top }, { top: 0, left: 0, right: a.width, bottom: a.height });
+    const away = { transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: "0.4" };
+    const rest = { transform: "translate(0, 0)", opacity: "1" };
     face.dataset.morph = leaving ? "leaving" : "";
-    const run = face.animate(leaving ? [open, closed] : [closed, open], { id: "morph:popup", duration: leaving ? POPUP_LEAVE_MS : POPUP_ENTER_MS, easing: leaving ? getComputedStyle(face).getPropertyValue("--ease-out").trim() || "ease-out" : "cubic-bezier(.65, 0, .35, 1)" });
+    const run = face.animate(leaving ? [rest, away] : [away, rest], {
+      id: "morph:popup",
+      duration: leaving ? POPUP_LEAVE_MS : POPUP_ENTER_MS,
+      easing: leaving ? getComputedStyle(face).getPropertyValue("--ease-out").trim() || "ease-out" : "cubic-bezier(.65, 0, .35, 1)",
+    });
     return () => run.cancel();
   }, [visible, leaving, trigger, panel]);
 }
